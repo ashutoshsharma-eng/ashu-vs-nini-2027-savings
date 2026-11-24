@@ -8,18 +8,22 @@ Built with Next.js (App Router, TypeScript, Tailwind CSS) and Neon serverless Po
 ## Features
 
 - 🔐 Profile picker + 4-digit PIN login (Server Actions, signed HTTP-only cookie)
+- ⏱️ Auto-logout after 5 minutes idle (30-second warning; enforced server-side too)
 - 🔒 See both grids live, but only tick your own boxes (enforced server-side)
 - 📊 Live scoreboard: combined progress, totals, boxes completed, leader badge
-- ☕ Money Date tracker for the 12 First Sundays of 2027 with "who pays for the chai" and notes
+- ☕ Money Date every Sunday of 2027 (52) with "who pays for the chai" and notes
+- 🎯 Personal bucket lists — what the money is for (edit your own, view your partner's)
 - ✈️ "Whoever quits first sponsors the other's 2028 trip" banner with last-active dates
-- 🎉 Confetti on each tick and every ₹10,000 combined milestone
-- Filters (All / Remaining / Completed), sort toggle, CSV export, dark mode, Add to Home Screen
+- 🎉 Confetti on each tick; every ₹10,000 together gets a toast, a "Cheers!" card and party poppers
+- 📗 Excel export: Summary (live formulas), each player's boxes, Money Dates, Bucket Lists — colour-coded
+- Filters (All / Remaining / Completed), sort toggle, dark mode, Add to Home Screen
 
 ## Zero-touch database
 
 No migrations or seed commands. On first request the app runs `CREATE TABLE IF NOT EXISTS` for
-`boxes` and `money_dates` and seeds 104 boxes and 12 Money Dates if the tables are empty
-(`lib/db.ts → ensureDbInitialized()`, guarded by an in-memory promise lock).
+`boxes`, `sunday_money_dates` and `bucket_items`, and seeds 104 boxes and 52 Sundays if empty
+(`lib/db.ts → ensureDbInitialized()`, guarded by an in-memory promise lock). Notes and completions
+from the older first-Sunday `money_dates` table are copied over automatically.
 
 ## Run locally
 

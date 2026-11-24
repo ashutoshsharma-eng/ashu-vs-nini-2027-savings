@@ -4,8 +4,14 @@ import Dashboard from "@/components/Dashboard";
 import LoginScreen from "@/components/LoginScreen";
 import SetupScreen from "@/components/SetupScreen";
 import { getSessionPlayer, usingDefaultPins } from "@/lib/auth";
-import { ensureDbInitialized, hasDatabaseUrl, loadBoxes, loadMoneyDates } from "@/lib/db";
-import type { BoxRow, MoneyDateRow } from "@/lib/types";
+import {
+  ensureDbInitialized,
+  hasDatabaseUrl,
+  loadBoxes,
+  loadBucketItems,
+  loadMoneyDates,
+} from "@/lib/db";
+import type { BoxRow, BucketItem, MoneyDateRow } from "@/lib/types";
 
 export default function Page() {
   return (
@@ -40,16 +46,22 @@ async function Home() {
       me={me}
       boxes={data.boxes}
       moneyDates={data.dates}
+      bucket={data.bucket}
       defaultPins={defaultPins}
       serverNow={data.now}
     />
   );
 }
 
-async function loadData(): Promise<{ boxes: BoxRow[]; dates: MoneyDateRow[]; now: number }> {
+async function loadData(): Promise<{
+  boxes: BoxRow[];
+  dates: MoneyDateRow[];
+  bucket: BucketItem[];
+  now: number;
+}> {
   await ensureDbInitialized();
-  const [boxes, dates] = await Promise.all([loadBoxes(), loadMoneyDates()]);
-  return { boxes, dates, now: Date.now() };
+  const [boxes, dates, bucket] = await Promise.all([loadBoxes(), loadMoneyDates(), loadBucketItems()]);
+  return { boxes, dates, bucket, now: Date.now() };
 }
 
 function Splash() {

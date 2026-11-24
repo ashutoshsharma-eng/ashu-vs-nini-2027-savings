@@ -1,7 +1,7 @@
 import "server-only";
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
-import { AMOUNTS, MONEY_DATES, PLAYER_KEYS, isPlayer } from "./constants";
-import type { BoxRow, MoneyDateRow } from "./types";
+import { AMOUNTS, PLAYER_KEYS, SUNDAYS, isPlayer } from "./constants";
+import type { BoxRow, BucketItem, MoneyDateRow } from "./types";
 
 export class MissingDatabaseUrlError extends Error {
   constructor() {
@@ -32,8 +32,9 @@ export async function query<T = Record<string, unknown>>(
 }
 
 // ---------------------------------------------------------------------------
-// Zero-touch schema + seed. Runs once per server instance; concurrent callers
-// share the same in-flight promise so they never race each other.
+// Zero-touch schema + seed + migrations. Runs once per server instance;
+// concurrent callers share the same in-flight promise so they never race.
+// Every statement is idempotent, so running it again on a live DB is safe.
 // ---------------------------------------------------------------------------
 
 let initPromise: Promise<void> | null = null;
@@ -58,13 +59,22 @@ async function initialize(): Promise<void> {
     UNIQUE(player, amount)
   )`);
 
-  await query(`CREATE TABLE IF NOT EXISTS money_dates (
+  // Money Date = every Sunday of 2027 (replaces the earlier first-Sunday-only `money_dates`).
+  await query(`CREATE TABLE IF NOT EXISTS sunday_money_dates (
     id SERIAL PRIMARY KEY,
-    month_index INT UNIQUE NOT NULL,
-    month_label VARCHAR(20) NOT NULL,
-    sunday_date VARCHAR(30) NOT NULL,
+    week_index INT UNIQUE NOT NULL,
+    sunday_date DATE UNIQUE NOT NULL,
     is_completed BOOLEAN DEFAULT FALSE,
     notes TEXT DEFAULT ''
+  )`);
+
+  await query(`CREATE TABLE IF NOT EXISTS bucket_items (
+    id SERIAL PRIMARY KEY,
+    player VARCHAR(20) NOT NULL,
+    title VARCHAR(120) NOT NULL,
+    est_cost INT,
+    is_done BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
   )`);
 
   const [{ count: boxCount }] = await query<{ count: number }>(
@@ -81,20 +91,29 @@ async function initialize(): Promise<void> {
     );
   }
 
-  const [{ count: dateCount }] = await query<{ count: number }>(
-    "SELECT COUNT(*)::int AS count FROM money_dates",
+  const [{ count: sundayCount }] = await query<{ count: number }>(
+    "SELECT COUNT(*)::int AS count FROM sunday_money_dates",
   );
-  if (dateCount === 0) {
+  if (sundayCount === 0) {
     await query(
-      `INSERT INTO money_dates (month_index, month_label, sunday_date)
-       SELECT * FROM unnest($1::int[], $2::varchar[], $3::varchar[])
-       ON CONFLICT (month_index) DO NOTHING`,
-      [
-        MONEY_DATES.map((d) => d.monthIndex),
-        MONEY_DATES.map((d) => d.monthLabel),
-        MONEY_DATES.map((d) => d.sundayDate),
-      ],
+      `INSERT INTO sunday_money_dates (week_index, sunday_date)
+       SELECT * FROM unnest($1::int[], $2::date[])
+       ON CONFLICT DO NOTHING`,
+      [SUNDAYS.map((s) => s.weekIndex), SUNDAYS.map((s) => s.iso)],
     );
+
+    // Carry over anything recorded in the old first-Sunday table, if it exists.
+    const [{ exists }] = await query<{ exists: boolean }>(
+      "SELECT to_regclass('money_dates') IS NOT NULL AS exists",
+    );
+    if (exists) {
+      await query(
+        `UPDATE sunday_money_dates s
+            SET is_completed = COALESCE(m.is_completed, FALSE), notes = COALESCE(m.notes, '')
+           FROM money_dates m
+          WHERE to_char(s.sunday_date, 'Mon FMDD, YYYY') = m.sunday_date`,
+      );
+    }
   }
 }
 
@@ -125,20 +144,42 @@ export async function loadBoxes(): Promise<BoxRow[]> {
 export async function loadMoneyDates(): Promise<MoneyDateRow[]> {
   const rows = await query<{
     id: number;
-    month_index: number;
-    month_label: string;
+    week_index: number;
     sunday_date: string;
     is_completed: boolean | null;
     notes: string | null;
   }>(
-    "SELECT id, month_index, month_label, sunday_date, is_completed, notes FROM money_dates ORDER BY month_index",
+    `SELECT id, week_index, to_char(sunday_date, 'YYYY-MM-DD') AS sunday_date, is_completed, notes
+       FROM sunday_money_dates ORDER BY week_index`,
   );
   return rows.map((r) => ({
     id: r.id,
-    monthIndex: r.month_index,
-    monthLabel: r.month_label,
+    weekIndex: r.week_index,
     sundayDate: r.sunday_date,
     isCompleted: Boolean(r.is_completed),
     notes: r.notes ?? "",
   }));
+}
+
+export async function loadBucketItems(): Promise<BucketItem[]> {
+  const rows = await query<{
+    id: number;
+    player: string;
+    title: string;
+    est_cost: number | null;
+    is_done: boolean | null;
+    created_at: string | Date;
+  }>(
+    "SELECT id, player, title, est_cost, is_done, created_at FROM bucket_items ORDER BY player, is_done, created_at",
+  );
+  return rows
+    .filter((r) => isPlayer(r.player))
+    .map((r) => ({
+      id: r.id,
+      player: r.player as BucketItem["player"],
+      title: r.title,
+      estCost: r.est_cost,
+      isDone: Boolean(r.is_done),
+      createdAt: new Date(r.created_at).toISOString(),
+    }));
 }

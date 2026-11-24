@@ -1,10 +1,14 @@
 import "server-only";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
-import { isPlayer, type Player } from "./constants";
+import { IDLE_LIMIT_MS, isPlayer, type Player } from "./constants";
 
 export const SESSION_COOKIE = "hvw_session";
-const ONE_YEAR = 60 * 60 * 24 * 365;
+/**
+ * The client logs out after IDLE_LIMIT_MS without interaction and pings the server
+ * at most once a minute while active, so the server allows one extra minute of slack.
+ */
+const SERVER_IDLE_LIMIT_MS = IDLE_LIMIT_MS + 60_000;
 
 const DEFAULT_PINS: Record<Player, string> = { husband: "1111", wife: "2222" };
 
@@ -30,8 +34,8 @@ function secret(): string {
   );
 }
 
-function sign(player: Player): string {
-  return createHmac("sha256", secret()).update(player).digest("base64url");
+function sign(payload: string): string {
+  return createHmac("sha256", secret()).update(payload).digest("base64url");
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -44,21 +48,28 @@ export function checkPin(player: Player, pin: string): boolean {
   return safeEqual(pin, getPin(player));
 }
 
+/** Cookie value: `<player>.<lastActiveMs>.<hmac>`; expires after the idle limit. */
 export async function getSessionPlayer(): Promise<Player | null> {
   const raw = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!raw) return null;
-  const [player, sig] = raw.split(".");
-  if (!isPlayer(player) || !sig) return null;
-  return safeEqual(sig, sign(player)) ? player : null;
+  const [player, ts, sig] = raw.split(".");
+  if (!isPlayer(player) || !ts || !sig) return null;
+  if (!safeEqual(sig, sign(`${player}.${ts}`))) return null;
+  const age = Date.now() - Number(ts);
+  if (!Number.isFinite(age) || age > SERVER_IDLE_LIMIT_MS) return null;
+  return player;
 }
 
+/** Sets (or renews) the session with a fresh last-active timestamp. */
 export async function setSessionPlayer(player: Player): Promise<void> {
-  (await cookies()).set(SESSION_COOKIE, `${player}.${sign(player)}`, {
+  const payload = `${player}.${Date.now()}`;
+  (await cookies()).set(SESSION_COOKIE, `${payload}.${sign(payload)}`, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: ONE_YEAR,
+    // The cookie itself is short-lived too; activity keeps renewing it.
+    maxAge: Math.ceil(SERVER_IDLE_LIMIT_MS / 1000),
   });
 }
 

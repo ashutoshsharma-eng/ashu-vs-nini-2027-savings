@@ -11,11 +11,20 @@ export type BoxRow = {
 
 export type MoneyDateRow = {
   id: number;
-  monthIndex: number;
-  monthLabel: string;
+  weekIndex: number;
+  /** YYYY-MM-DD */
   sundayDate: string;
   isCompleted: boolean;
   notes: string;
+};
+
+export type BucketItem = {
+  id: number;
+  player: Player;
+  title: string;
+  estCost: number | null;
+  isDone: boolean;
+  createdAt: string;
 };
 
 export type ActionResult = { ok: true } | { ok: false; error: string };

@@ -19,21 +19,14 @@ export const INDIVIDUAL_TARGET = AMOUNTS.reduce((a, b) => a + b, 0); // 68,900
 export const COMBINED_TARGET = INDIVIDUAL_TARGET * 2; // 1,37,800
 export const MILESTONE_STEP = 10_000;
 
-/** First Sundays of 2027 — the monthly "Money Date". */
-export const MONEY_DATES = [
-  { monthIndex: 1, monthLabel: "January", sundayDate: "Jan 3, 2027", iso: "2027-01-03" },
-  { monthIndex: 2, monthLabel: "February", sundayDate: "Feb 7, 2027", iso: "2027-02-07" },
-  { monthIndex: 3, monthLabel: "March", sundayDate: "Mar 7, 2027", iso: "2027-03-07" },
-  { monthIndex: 4, monthLabel: "April", sundayDate: "Apr 4, 2027", iso: "2027-04-04" },
-  { monthIndex: 5, monthLabel: "May", sundayDate: "May 2, 2027", iso: "2027-05-02" },
-  { monthIndex: 6, monthLabel: "June", sundayDate: "Jun 6, 2027", iso: "2027-06-06" },
-  { monthIndex: 7, monthLabel: "July", sundayDate: "Jul 4, 2027", iso: "2027-07-04" },
-  { monthIndex: 8, monthLabel: "August", sundayDate: "Aug 1, 2027", iso: "2027-08-01" },
-  { monthIndex: 9, monthLabel: "September", sundayDate: "Sep 5, 2027", iso: "2027-09-05" },
-  { monthIndex: 10, monthLabel: "October", sundayDate: "Oct 3, 2027", iso: "2027-10-03" },
-  { monthIndex: 11, monthLabel: "November", sundayDate: "Nov 7, 2027", iso: "2027-11-07" },
-  { monthIndex: 12, monthLabel: "December", sundayDate: "Dec 5, 2027", iso: "2027-12-05" },
-] as const;
+/** Every Sunday of 2027 is a "Money Date": Jan 3 → Dec 26 (52 Sundays). */
+export const SUNDAYS: { weekIndex: number; iso: string }[] = Array.from({ length: 52 }, (_, i) => {
+  const d = new Date(Date.UTC(2027, 0, 3 + i * 7));
+  return { weekIndex: i + 1, iso: d.toISOString().slice(0, 10) };
+});
+
+/** Auto-logout after this much inactivity. */
+export const IDLE_LIMIT_MS = 5 * 60 * 1000;
 
 export const TIME_ZONE = "Asia/Kolkata";
 
@@ -43,4 +36,23 @@ export function formatINR(n: number): string {
 
 export function isPlayer(v: unknown): v is Player {
   return v === "husband" || v === "wife";
+}
+
+/** "2027-01-03" → "Sun, 3 Jan" */
+export function formatSunday(iso: string, withYear = false): string {
+  return new Date(`${iso}T12:00:00+05:30`).toLocaleDateString("en-IN", {
+    timeZone: TIME_ZONE,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    ...(withYear ? { year: "numeric" } : {}),
+  });
+}
+
+export function monthOf(iso: string): string {
+  return new Date(`${iso}T12:00:00+05:30`).toLocaleDateString("en-IN", {
+    timeZone: TIME_ZONE,
+    month: "long",
+    year: "numeric",
+  });
 }

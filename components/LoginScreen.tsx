@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { loginAction, type LoginState } from "@/app/actions";
 import { PLAYER_KEYS, PLAYERS, formatINR, COMBINED_TARGET, type Player } from "@/lib/constants";
 import DefaultPinBanner from "./DefaultPinBanner";
@@ -17,6 +18,7 @@ export default function LoginScreen({ defaultPins }: { defaultPins: boolean }) {
     error: null,
   });
   const formRef = useRef<HTMLFormElement>(null);
+  const idle = useSearchParams().get("reason") === "idle";
 
   function onPinChange(v: string) {
     const digits = v.replace(/\D/g, "").slice(0, 4);
@@ -30,6 +32,11 @@ export default function LoginScreen({ defaultPins }: { defaultPins: boolean }) {
   return (
     <main className="safe-top safe-bottom mx-auto flex w-full max-w-md flex-1 flex-col gap-6 px-5">
       {defaultPins && <DefaultPinBanner />}
+      {idle && (
+        <div className="rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-800 ring-1 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:ring-sky-900">
+          🔒 Logged out after 5 minutes of inactivity. Enter your PIN to continue.
+        </div>
+      )}
 
       <header className="mt-6 text-center">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">

@@ -1,5 +1,5 @@
-import { BOX_COUNT, MONEY_DATES, PLAYER_KEYS, PLAYERS, TIME_ZONE, type Player } from "./constants";
-import type { BoxRow, MoneyDateRow } from "./types";
+import { PLAYERS, SUNDAYS, TIME_ZONE, type Player } from "./constants";
+import type { BoxRow } from "./types";
 
 export type PlayerStats = {
   total: number;
@@ -47,7 +47,7 @@ export function daysAgo(iso: string | null, now = Date.now()): string {
 }
 
 /** End of the given ISO date (YYYY-MM-DD) in IST, as epoch ms. */
-function endOfDayIST(iso: string): number {
+export function endOfDayIST(iso: string): number {
   return new Date(`${iso}T23:59:59.999+05:30`).getTime();
 }
 
@@ -58,15 +58,15 @@ export type ChaiVerdict = {
 };
 
 /**
- * Who pays for chai at a Money Date?
- * 1. Fewer ticks since the previous Money Date (the "month" being reviewed) pays.
- * 2. If that's tied (or nobody ticked anything yet), fewer total ticks pays.
+ * Who pays for chai on a given Sunday?
+ * 1. Fewer ticks during that week (since the previous Sunday) pays.
+ * 2. If that's tied (e.g. nobody ticked anything), fewer total ticks pays.
  * 3. Still tied → split it.
  */
-export function chaiVerdict(boxes: BoxRow[], monthIndex: number): ChaiVerdict {
-  const idx = MONEY_DATES.findIndex((d) => d.monthIndex === monthIndex);
-  const end = endOfDayIST(MONEY_DATES[idx].iso);
-  const start = idx > 0 ? endOfDayIST(MONEY_DATES[idx - 1].iso) : -Infinity;
+export function chaiVerdict(boxes: BoxRow[], weekIndex: number): ChaiVerdict {
+  const idx = SUNDAYS.findIndex((d) => d.weekIndex === weekIndex);
+  const end = endOfDayIST(SUNDAYS[idx].iso);
+  const start = idx > 0 ? endOfDayIST(SUNDAYS[idx - 1].iso) : -Infinity;
 
   const windowCounts = { husband: 0, wife: 0 } as Record<Player, number>;
   const totals = { husband: 0, wife: 0 } as Record<Player, number>;
@@ -86,7 +86,7 @@ export function chaiVerdict(boxes: BoxRow[], monthIndex: number): ChaiVerdict {
   if (byWindow) {
     return {
       payer: byWindow,
-      reason: `Fewer ticks ${idx === 0 ? "before this date" : "since the last Money Date"} (${windowCounts[byWindow]} vs ${windowCounts[PLAYERS[byWindow].partner]})`,
+      reason: `Fewer ticks ${idx === 0 ? "before this Sunday" : "this week"} (${windowCounts[byWindow]} vs ${windowCounts[PLAYERS[byWindow].partner]})`,
       windowCounts,
     };
   }
@@ -99,51 +99,4 @@ export function chaiVerdict(boxes: BoxRow[], monthIndex: number): ChaiVerdict {
     };
   }
   return { payer: null, reason: "Dead heat — split the bill 🤝", windowCounts };
-}
-
-function csvCell(v: string | number): string {
-  const s = String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-export function buildCsv(boxes: BoxRow[], dates: MoneyDateRow[]): string {
-  const stats = computeStats(boxes);
-  const lines: (string | number)[][] = [
-    ["Husband vs Wife 2027 Savings — export", new Date().toISOString()],
-    [],
-    ["Summary"],
-    ["Player", "Name", "Total Saved (INR)", "Boxes Completed", "Last Active"],
-    ...PLAYER_KEYS.map((p) => [
-      p,
-      PLAYERS[p].name,
-      stats[p].total,
-      `${stats[p].count}/${BOX_COUNT}`,
-      stats[p].lastActive ?? "",
-    ]),
-    ["Combined", "", stats.husband.total + stats.wife.total, "", ""],
-    [],
-    ["Boxes"],
-    ["Player", "Name", "Amount (INR)", "Status", "Checked At (IST)"],
-    ...boxes.map((b) => [
-      b.player,
-      PLAYERS[b.player].name,
-      b.amount,
-      b.isChecked ? "Completed" : "Remaining",
-      b.isChecked ? formatDate(b.checkedAt, true) : "",
-    ]),
-    [],
-    ["Money Dates"],
-    ["Month", "Sunday", "Completed", "Chai paid by", "Notes"],
-    ...dates.map((d) => {
-      const v = chaiVerdict(boxes, d.monthIndex);
-      return [
-        d.monthLabel,
-        d.sundayDate,
-        d.isCompleted ? "Yes" : "No",
-        v.payer ? PLAYERS[v.payer].name : "Split",
-        d.notes,
-      ];
-    }),
-  ];
-  return lines.map((row) => row.map(csvCell).join(",")).join("\n");
 }
