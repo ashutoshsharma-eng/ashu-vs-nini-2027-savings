@@ -24,6 +24,9 @@ Built with Next.js (App Router, TypeScript, Tailwind CSS) and Neon serverless Po
 - 🔒 Everyone sees everyone's grid live, but can only tick their own boxes (enforced server-side)
 - 📋 Shared plan: first box, step (same / suggested / custom), number of boxes, live preview
 - ☕ Every Sunday of 2027 tracked with notes; 🎯 personal bucket lists
+- 🔔 Phone reminders (web push, free): anyone who hasn't ticked a box since last Sunday gets a nudge on
+  Fri 7 pm, Sat 10 am, Sat 7 pm and Sun 10 am IST — ticking one stops the rest for that week.
+  Works from the Home Screen app on iPhone (iOS 16.4+) and in Chrome on Android; turn on in ⚙️ Settings
 - 🎉 Confetti on each tick; every ₹10,000 crossed gets a toast, a "Cheers!" card and party poppers
 - 📗 Excel export: Summary (live formulas, one column per person), each person's boxes, Sundays, bucket lists
 - Filters, sort toggle, dark mode, Add to Home Screen
@@ -31,7 +34,8 @@ Built with Next.js (App Router, TypeScript, Tailwind CSS) and Neon serverless Po
 ## Zero-touch database
 
 No migrations or seed commands. On first request the app creates any missing tables
-(`group_settings`, `members`, `challenge_plan`, `boxes`, `sunday_money_dates`, `bucket_items`) and
+(`group_settings`, `members`, `challenge_plan`, `boxes`, `sunday_money_dates`, `bucket_items`,
+`push_config`, `push_subscriptions`, `reminder_log`) and
 seeds the 52 Sundays (`lib/db.ts → ensureDbInitialized()`, guarded by an in-memory promise lock).
 
 Upgrading from the original husband-vs-wife version is automatic: Ashutosh (admin) and Niharika
@@ -50,7 +54,8 @@ npm run dev
 
 1. Push this repo to GitHub and import it in Vercel.
 2. Add a Neon database (Vercel → Storage → Neon, or create one at neon.tech).
-3. Set `DATABASE_URL` and `SETUP_CODE` in Environment Variables.
+3. Set `DATABASE_URL`, `SETUP_CODE` and `CRON_SECRET` (any long random string — it lets Vercel Cron
+   run the reminders in `vercel.json`) in Environment Variables. Push keys are generated automatically.
 4. Deploy, open the URL, enter the setup code, add your people, and pick the plan.
 5. On each phone: *Share → Add to Home Screen*.
 

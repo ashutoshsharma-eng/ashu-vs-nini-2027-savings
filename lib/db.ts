@@ -129,6 +129,30 @@ async function initialize(): Promise<void> {
     updated_at TIMESTAMPTZ DEFAULT NOW()
   )`);
 
+  // Phone reminders (web push): keys are generated once and kept here, so no env setup is needed.
+  await query(`CREATE TABLE IF NOT EXISTS push_config (
+    id INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    public_key TEXT NOT NULL,
+    private_key TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  await query(`CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id SERIAL PRIMARY KEY,
+    member_id INT NOT NULL,
+    endpoint TEXT UNIQUE NOT NULL,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    user_agent TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  await query(`CREATE TABLE IF NOT EXISTS reminder_log (
+    member_id INT NOT NULL,
+    sunday_date DATE NOT NULL,
+    slot VARCHAR(16) NOT NULL,
+    sent_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (member_id, sunday_date, slot)
+  )`);
+
   if (had_boxes && !had_members) await migrateFromTwoPlayerVersion();
 
   const [{ has_plan }] = await query<{ has_plan: boolean }>(

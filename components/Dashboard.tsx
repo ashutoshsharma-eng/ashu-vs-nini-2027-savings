@@ -16,6 +16,7 @@ import ConfirmSheet from "./ConfirmSheet";
 import DefaultPinBanner from "./DefaultPinBanner";
 import MoneyDates from "./MoneyDates";
 import PlanSetup from "./PlanSetup";
+import { RemindersBanner } from "./Reminders";
 import Scoreboard from "./Scoreboard";
 import SettingsSheet from "./SettingsSheet";
 import StakesBanner from "./StakesBanner";
@@ -168,6 +169,7 @@ export default function Dashboard({
       </header>
 
       {me.pinIsDefault && <DefaultPinBanner onFix={() => setSettingsOpen(true)} />}
+      {plan.configured && <RemindersBanner onToast={setToast} />}
 
       {!plan.configured ? (
         <PlanSetup plan={plan} memberCount={members.length} mode="initial" onError={setToast} />

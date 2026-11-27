@@ -128,7 +128,7 @@ export default function GroupSetup({ hasSetupCode }: { hasSetupCode: boolean }) 
                 autoComplete="new-password"
                 placeholder="PIN"
                 aria-label={`Person ${i + 1} 4-digit PIN`}
-                className={`${field} text-center tracking-[0.4em]`}
+                className={`${field} text-center tracking-[0.4em] placeholder:tracking-normal`}
               />
             </div>
             <MemberAvatarPicker

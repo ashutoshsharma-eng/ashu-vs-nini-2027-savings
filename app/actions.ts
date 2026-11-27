@@ -1,6 +1,7 @@
 "use server";
 
 import { refresh } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { clearSession, getSessionMember, safeEqual, setSessionMember, setupCode } from "@/lib/auth";
 import {
@@ -22,6 +23,7 @@ import {
   isValidPin,
 } from "@/lib/members";
 import { hashPin, verifyPin } from "@/lib/pin";
+import { deleteSubscription, getVapidKeys, saveSubscription, sendToMember, type PushInput } from "@/lib/push";
 import { validatePlan } from "@/lib/plan";
 import type { ActionResult, Member } from "@/lib/types";
 
@@ -420,4 +422,65 @@ export async function removeMemberAction(id: number): Promise<ActionResult> {
       ["DELETE FROM members WHERE id = $1 AND NOT is_admin", [id]],
     ]);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Phone reminders (web push)
+// ---------------------------------------------------------------------------
+
+export async function getPushPublicKeyAction(): Promise<string | null> {
+  const me = await getSessionMember();
+  if (!me) return null;
+  await ensureDbInitialized();
+  return (await getVapidKeys()).publicKey;
+}
+
+function isPushInput(v: unknown): v is PushInput {
+  const s = v as PushInput;
+  return (
+    typeof s?.endpoint === "string" &&
+    /^https:\/\//.test(s.endpoint) &&
+    s.endpoint.length < 1000 &&
+    typeof s.keys?.p256dh === "string" &&
+    typeof s.keys?.auth === "string"
+  );
+}
+
+export async function enableRemindersAction(sub: unknown): Promise<ActionResult> {
+  const me = await activeMember();
+  if (!me) return EXPIRED;
+  if (!isPushInput(sub)) return fail("This phone didn't give a valid notification subscription.");
+  try {
+    await ensureDbInitialized();
+    await saveSubscription(me.id, sub, (await headers()).get("user-agent"));
+    return { ok: true };
+  } catch (err) {
+    console.error("enableReminders failed", err);
+    return fail("Couldn't turn on reminders — try again.");
+  }
+}
+
+export async function disableRemindersAction(endpoint: string): Promise<ActionResult> {
+  const me = await activeMember();
+  if (!me) return EXPIRED;
+  try {
+    await ensureDbInitialized();
+    await deleteSubscription(me.id, endpoint);
+    return { ok: true };
+  } catch (err) {
+    console.error("disableReminders failed", err);
+    return fail("Couldn't turn off reminders — try again.");
+  }
+}
+
+export async function sendTestReminderAction(): Promise<ActionResult> {
+  const me = await activeMember();
+  if (!me) return EXPIRED;
+  await ensureDbInitialized();
+  const n = await sendToMember(me.id, {
+    title: "Reminders are on 🔔",
+    body: `Hi ${me.name}! If you haven't ticked a box by Friday evening, you'll get a nudge before Sunday.`,
+    tag: "test",
+  });
+  return n > 0 ? { ok: true } : fail("No phone is set up for reminders yet — turn them on first.");
 }

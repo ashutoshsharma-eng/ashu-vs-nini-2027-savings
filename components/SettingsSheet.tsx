@@ -14,6 +14,7 @@ import { EMOJI_SUGGESTIONS, MAX_MEMBERS, colorOf, isValidPin, nextFreeColor } fr
 import type { ActionResult, Member } from "@/lib/types";
 import ConfirmSheet from "./ConfirmSheet";
 import MemberAvatarPicker from "./MemberAvatarPicker";
+import { RemindersCard } from "./Reminders";
 
 type Props = {
   me: Member;
@@ -37,7 +38,7 @@ const pinInput = (v: string, set: (v: string) => void, label: string) => (
     autoComplete="off"
     placeholder={label}
     aria-label={label}
-    className={`${field} text-center tracking-[0.4em]`}
+    className={`${field} text-center tracking-[0.4em] placeholder:tracking-normal`}
   />
 );
 
@@ -66,6 +67,7 @@ export default function SettingsSheet({ me, members, groupName, onClose, onToast
           </button>
         </div>
         <div className="space-y-4 overflow-y-auto px-4 pb-6">
+          <RemindersCard onToast={onToast} />
           <MyProfile me={me} onToast={onToast} />
           <ChangePin me={me} onToast={onToast} />
           {me.isAdmin ? (
