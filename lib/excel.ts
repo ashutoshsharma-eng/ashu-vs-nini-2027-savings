@@ -1,14 +1,12 @@
 import "server-only";
 import ExcelJS from "exceljs";
 import {
-  BOX_COUNT,
-  COMBINED_TARGET,
-  INDIVIDUAL_TARGET,
   PLAYER_KEYS,
   PLAYERS,
   monthOf,
   type Player,
 } from "./constants";
+import { lastBox, planTarget, type Plan } from "./plan";
 import { chaiVerdict, computeStats, leaderOf } from "./stats";
 import type { BoxRow, BucketItem, MoneyDateRow } from "./types";
 
@@ -94,8 +92,13 @@ export async function buildWorkbook(data: {
   boxes: BoxRow[];
   dates: MoneyDateRow[];
   bucket: BucketItem[];
+  plan: Plan;
 }): Promise<Buffer> {
-  const { boxes, dates, bucket } = data;
+  const { boxes, dates, bucket, plan } = data;
+  const BOX_COUNT = plan.count;
+  const INDIVIDUAL_TARGET = planTarget(plan);
+  const COMBINED_TARGET = INDIVIDUAL_TARGET * 2;
+  const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
   const stats = computeStats(boxes);
   const leader = leaderOf(stats);
   const exportedAt = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
@@ -112,7 +115,12 @@ export async function buildWorkbook(data: {
     properties: { tabColor: { argb: COLORS.title } },
   });
   sum.columns = [{ width: 30 }, { width: 22 }, { width: 22 }, { width: 22 }];
-  addTitle(sum, "Husband 🆚 Wife — 2027 Savings", `Exported ${exportedAt} IST`, "D");
+  addTitle(
+    sum,
+    "Husband 🆚 Wife — 2027 Savings",
+    `Plan: ${inr(plan.start)} → ${inr(lastBox(plan))} in steps of ${inr(plan.step)} · ${BOX_COUNT} boxes each · exported ${exportedAt} IST`,
+    "D",
+  );
   sum.addRow([]);
 
   const head = sum.addRow(["", PLAYERS.husband.name, PLAYERS.wife.name, "Combined"]);
@@ -275,8 +283,8 @@ export async function buildWorkbook(data: {
     ];
     addTitle(
       ws,
-      `${PLAYERS[p].emoji} ${PLAYERS[p].name}'s 52 boxes`,
-      `₹50 → ₹2,600 · target ₹${INDIVIDUAL_TARGET.toLocaleString("en-IN")}`,
+      `${PLAYERS[p].emoji} ${PLAYERS[p].name}'s ${BOX_COUNT} boxes`,
+      `${inr(plan.start)} → ${inr(lastBox(plan))} · target ${inr(INDIVIDUAL_TARGET)}`,
       "E",
     );
     const h = ws.addRow(["Box #", "Amount", "Status", "Ticked on (IST)", "Saved so far"]);

@@ -1,7 +1,9 @@
 # Husband 🆚 Wife — 2027 Savings
 
-A mobile-first savings challenge for **Ashutosh** and **Niharika**. Each player has 52 boxes
-(₹50 → ₹2,600 in steps of ₹50 = **₹68,900** each, **₹1,37,800** together). Tick boxes in any order.
+A mobile-first savings challenge for **Ashutosh** and **Niharika**. Before you start, pick a shared
+plan in the app — first box amount, how much each box increases by, and how many boxes (default
+₹100 → ₹5,200 in steps of ₹100 × 52 = **₹1,37,800** each, **₹2,75,600** together). Either of you can
+edit the plan until the first box is ticked; then it's locked for the year. Tick boxes in any order.
 
 Built with Next.js (App Router, TypeScript, Tailwind CSS) and Neon serverless Postgres.
 
@@ -21,8 +23,9 @@ Built with Next.js (App Router, TypeScript, Tailwind CSS) and Neon serverless Po
 ## Zero-touch database
 
 No migrations or seed commands. On first request the app runs `CREATE TABLE IF NOT EXISTS` for
-`boxes`, `sunday_money_dates` and `bucket_items`, and seeds 104 boxes and 52 Sundays if empty
-(`lib/db.ts → ensureDbInitialized()`, guarded by an in-memory promise lock). Notes and completions
+`challenge_plan`, `boxes`, `sunday_money_dates` and `bucket_items`, and seeds the 52 Sundays if empty
+(boxes are created when you set up the plan). Runs in `lib/db.ts → ensureDbInitialized()`, guarded by an in-memory promise lock. If an older
+version already has ticked ₹50 boxes, that progress is kept and its plan is locked in. Notes and completions
 from the older first-Sunday `money_dates` table are copied over automatically.
 
 ## Run locally

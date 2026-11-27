@@ -1,6 +1,6 @@
 import { connection } from "next/server";
 import { getSessionPlayer } from "@/lib/auth";
-import { ensureDbInitialized, loadBoxes, loadBucketItems, loadMoneyDates } from "@/lib/db";
+import { ensureDbInitialized, loadBoxes, loadBucketItems, loadMoneyDates, loadPlan } from "@/lib/db";
 import { buildWorkbook } from "@/lib/excel";
 
 export async function GET() {
@@ -10,8 +10,13 @@ export async function GET() {
 
   try {
     await ensureDbInitialized();
-    const [boxes, dates, bucket] = await Promise.all([loadBoxes(), loadMoneyDates(), loadBucketItems()]);
-    const file = await buildWorkbook({ boxes, dates, bucket });
+    const [boxes, dates, bucket, plan] = await Promise.all([
+      loadBoxes(),
+      loadMoneyDates(),
+      loadBucketItems(),
+      loadPlan(),
+    ]);
+    const file = await buildWorkbook({ boxes, dates, bucket, plan });
     const day = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
     return new Response(new Uint8Array(file), {
       headers: {

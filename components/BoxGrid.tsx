@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BOX_COUNT, PLAYER_KEYS, PLAYERS, formatINR, type Player } from "@/lib/constants";
+import { PLAYER_KEYS, PLAYERS, formatINR, type Player } from "@/lib/constants";
+import { lastBox, type Plan } from "@/lib/plan";
 import { formatDate } from "@/lib/stats";
 import type { BoxRow } from "@/lib/types";
 
@@ -22,9 +23,11 @@ type Props = {
   onViewingChange: (p: Player) => void;
   boxes: BoxRow[];
   onBoxPress: (b: BoxRow) => void;
+  plan: Plan;
 };
 
-export default function BoxGrid({ me, viewing, onViewingChange, boxes, onBoxPress }: Props) {
+export default function BoxGrid({ me, viewing, onViewingChange, boxes, onBoxPress, plan }: Props) {
+  const BOX_COUNT = plan.count;
   const [filter, setFilter] = useState<Filter>("all");
   const [asc, setAsc] = useState(true);
   const readOnly = viewing !== me;
@@ -95,13 +98,13 @@ export default function BoxGrid({ me, viewing, onViewingChange, boxes, onBoxPres
           onClick={() => setAsc((v) => !v)}
           className="w-full whitespace-nowrap rounded-full bg-white px-3 py-1.5 text-xs font-semibold ring-1 ring-black/10 dark:bg-zinc-900 dark:ring-white/10"
         >
-          Sort: {asc ? "₹50 → ₹2,600" : "₹2,600 → ₹50"} ⇅
+          Sort: {asc ? `${formatINR(plan.start)} → ${formatINR(lastBox(plan))}` : `${formatINR(lastBox(plan))} → ${formatINR(plan.start)}`} ⇅
         </button>
       </div>
 
       {visible.length === 0 ? (
         <p className="rounded-2xl bg-white p-8 text-center text-sm text-zinc-500 ring-1 ring-black/5 dark:bg-zinc-900 dark:ring-white/10">
-          {filter === "completed" ? "Nothing ticked yet — first box is the hardest! 💪" : "All 52 done. Legend. 🏆"}
+          {filter === "completed" ? "Nothing ticked yet — first box is the hardest! 💪" : `All ${BOX_COUNT} done. Legend. 🏆`}
         </p>
       ) : (
         <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8">

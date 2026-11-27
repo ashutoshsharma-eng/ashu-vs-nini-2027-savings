@@ -10,7 +10,9 @@ import {
   loadBoxes,
   loadBucketItems,
   loadMoneyDates,
+  loadPlan,
 } from "@/lib/db";
+import type { Plan } from "@/lib/plan";
 import type { BoxRow, BucketItem, MoneyDateRow } from "@/lib/types";
 
 export default function Page() {
@@ -47,6 +49,7 @@ async function Home() {
       boxes={data.boxes}
       moneyDates={data.dates}
       bucket={data.bucket}
+      plan={data.plan}
       defaultPins={defaultPins}
       serverNow={data.now}
     />
@@ -57,11 +60,17 @@ async function loadData(): Promise<{
   boxes: BoxRow[];
   dates: MoneyDateRow[];
   bucket: BucketItem[];
+  plan: Plan;
   now: number;
 }> {
   await ensureDbInitialized();
-  const [boxes, dates, bucket] = await Promise.all([loadBoxes(), loadMoneyDates(), loadBucketItems()]);
-  return { boxes, dates, bucket, now: Date.now() };
+  const [boxes, dates, bucket, plan] = await Promise.all([
+    loadBoxes(),
+    loadMoneyDates(),
+    loadBucketItems(),
+    loadPlan(),
+  ]);
+  return { boxes, dates, bucket, plan, now: Date.now() };
 }
 
 function Splash() {

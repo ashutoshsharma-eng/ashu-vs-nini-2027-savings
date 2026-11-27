@@ -4,7 +4,8 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { checkPin, clearSession, getSessionPlayer, setSessionPlayer } from "@/lib/auth";
 import { isPlayer, PLAYERS, type Player } from "@/lib/constants";
-import { ensureDbInitialized, query } from "@/lib/db";
+import { ensureDbInitialized, query, savePlan } from "@/lib/db";
+import { validatePlan } from "@/lib/plan";
 import type { ActionResult } from "@/lib/types";
 
 export type LoginState = { error: string | null };
@@ -64,6 +65,22 @@ async function run(label: string, fn: () => Promise<ActionResult | void>): Promi
   }
   refresh();
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Shared savings plan (editable by either player until the first box is ticked)
+// ---------------------------------------------------------------------------
+
+export async function savePlanAction(start: number, step: number, count: number): Promise<ActionResult> {
+  const me = await activePlayer();
+  if (!me) return EXPIRED;
+  const invalid = validatePlan(start, step, count);
+  if (invalid) return { ok: false, error: invalid };
+
+  return run("savePlan", async () => {
+    const saved = await savePlan(start, step, count, me);
+    if (!saved) return { ok: false, error: "🔒 The plan is locked — a box has already been ticked." };
+  });
 }
 
 // ---------------------------------------------------------------------------

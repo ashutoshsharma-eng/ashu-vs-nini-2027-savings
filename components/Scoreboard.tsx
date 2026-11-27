@@ -1,12 +1,5 @@
-import {
-  BOX_COUNT,
-  COMBINED_TARGET,
-  INDIVIDUAL_TARGET,
-  PLAYER_KEYS,
-  PLAYERS,
-  formatINR,
-  type Player,
-} from "@/lib/constants";
+import { PLAYER_KEYS, PLAYERS, formatINR, type Player } from "@/lib/constants";
+import { planTarget, type Plan } from "@/lib/plan";
 import { leaderOf, type PlayerStats } from "@/lib/stats";
 
 const bar: Record<Player, string> = {
@@ -22,7 +15,17 @@ function pct(n: number, of: number) {
   return Math.min(100, (n / of) * 100);
 }
 
-export default function Scoreboard({ stats, me }: { stats: Record<Player, PlayerStats>; me: Player }) {
+export default function Scoreboard({
+  stats,
+  me,
+  plan,
+}: {
+  stats: Record<Player, PlayerStats>;
+  me: Player;
+  plan: Plan;
+}) {
+  const INDIVIDUAL_TARGET = planTarget(plan);
+  const COMBINED_TARGET = INDIVIDUAL_TARGET * 2;
   const combined = stats.husband.total + stats.wife.total;
   const combinedPct = pct(combined, COMBINED_TARGET);
   const leader = leaderOf(stats);
@@ -81,7 +84,7 @@ export default function Scoreboard({ stats, me }: { stats: Record<Player, Player
               <div className="text-xl font-extrabold tabular-nums">{formatINR(s.total)}</div>
               <div className="mt-1 text-[11px] uppercase tracking-wide text-zinc-500">Boxes</div>
               <div className="text-sm font-semibold tabular-nums">
-                {s.count} / {BOX_COUNT}
+                {s.count} / {plan.count}
               </div>
               <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
                 <div

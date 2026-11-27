@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { logoutAction, toggleBoxAction } from "@/app/actions";
 import { MILESTONE_STEP, PLAYERS, formatINR, type Player } from "@/lib/constants";
 import { celebrateMilestone, celebrateTick } from "@/lib/confetti";
+import { lastBox, type Plan } from "@/lib/plan";
 import { computeStats } from "@/lib/stats";
 import type { BoxRow, BucketItem, MoneyDateRow } from "@/lib/types";
 import { useIdleLogout } from "@/lib/useIdleLogout";
@@ -14,6 +15,7 @@ import CelebrationOverlay from "./CelebrationOverlay";
 import ConfirmSheet from "./ConfirmSheet";
 import DefaultPinBanner from "./DefaultPinBanner";
 import MoneyDates from "./MoneyDates";
+import PlanSetup from "./PlanSetup";
 import Scoreboard from "./Scoreboard";
 import StakesBanner from "./StakesBanner";
 
@@ -22,6 +24,7 @@ type Props = {
   boxes: BoxRow[];
   moneyDates: MoneyDateRow[];
   bucket: BucketItem[];
+  plan: Plan;
   defaultPins: boolean;
   serverNow: number;
 };
@@ -44,7 +47,7 @@ function latestTicker(boxes: BoxRow[]): Player | null {
   return best?.player ?? null;
 }
 
-export default function Dashboard({ me, boxes, moneyDates, bucket, defaultPins, serverNow }: Props) {
+export default function Dashboard({ me, boxes, moneyDates, bucket, plan, defaultPins, serverNow }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [optimisticBoxes, applyOptimistic] = useOptimistic(
@@ -59,10 +62,12 @@ export default function Dashboard({ me, boxes, moneyDates, bucket, defaultPins, 
   const [viewing, setViewing] = useState<Player>(me);
   const [confirmBox, setConfirmBox] = useState<BoxRow | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [editingPlan, setEditingPlan] = useState(false);
   const { secondsLeft } = useIdleLogout();
 
   const stats = useMemo(() => computeStats(optimisticBoxes), [optimisticBoxes]);
   const combined = stats.husband.total + stats.wife.total;
+  const locked = optimisticBoxes.some((b) => b.isChecked);
 
   // --- Milestones: every ₹10,000 crossed together (by either of you) -------------------
   const floor = Math.floor(combined / MILESTONE_STEP);
@@ -147,39 +152,76 @@ export default function Dashboard({ me, boxes, moneyDates, bucket, defaultPins, 
 
       {defaultPins && <DefaultPinBanner />}
 
-      <Scoreboard stats={stats} me={me} />
-      <StakesBanner stats={stats} now={serverNow} />
+      {!plan.configured ? (
+        <PlanSetup plan={plan} mode="initial" onError={setToast} />
+      ) : (
+        <>
+        <Scoreboard stats={stats} me={me} plan={plan} />
+        <StakesBanner stats={stats} now={serverNow} />
 
-      <nav className="sticky top-0 z-10 -mx-4 bg-[var(--background)]/90 px-4 py-2 backdrop-blur">
-        <div className="grid grid-cols-3 rounded-xl bg-zinc-200/70 p-1 text-[13px] font-semibold dark:bg-zinc-800">
-          {TABS.map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setTab(key)}
-              className={`rounded-lg py-2 transition ${
-                tab === key ? "bg-white shadow-sm dark:bg-zinc-950" : "text-zinc-500"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </nav>
+        <nav className="sticky top-0 z-10 -mx-4 bg-[var(--background)]/90 px-4 py-2 backdrop-blur">
+          <div className="grid grid-cols-3 rounded-xl bg-zinc-200/70 p-1 text-[13px] font-semibold dark:bg-zinc-800">
+            {TABS.map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTab(key)}
+                className={`rounded-lg py-2 transition ${
+                  tab === key ? "bg-white shadow-sm dark:bg-zinc-950" : "text-zinc-500"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </nav>
 
-      {tab === "grids" && (
-        <BoxGrid
-          me={me}
-          viewing={viewing}
-          onViewingChange={setViewing}
-          boxes={optimisticBoxes}
-          onBoxPress={onBoxPress}
-        />
+        {tab === "grids" && editingPlan && !locked && (
+          <PlanSetup plan={plan} mode="edit" onDone={() => setEditingPlan(false)} onError={setToast} />
+        )}
+        {tab === "grids" && !(editingPlan && !locked) && (
+          <div className="flex items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-black/5 dark:bg-zinc-900 dark:ring-white/10">
+            <div className="min-w-0">
+              <div className="truncate font-semibold tabular-nums">
+                📋 {formatINR(plan.start)} → {formatINR(lastBox(plan))} · steps of {formatINR(plan.step)}
+              </div>
+              <div className="text-xs text-zinc-500">
+                {plan.count} boxes each
+                {plan.updatedBy ? ` · set by ${PLAYERS[plan.updatedBy].name}` : ""}
+                {locked ? " · locked for the year" : " · locks at the first tick"}
+              </div>
+            </div>
+            {locked ? (
+              <span className="shrink-0 text-lg" title="Plan locked">
+                🔒
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEditingPlan(true)}
+                className="shrink-0 rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-semibold active:scale-95 dark:bg-zinc-800"
+              >
+                ✏️ Edit
+              </button>
+            )}
+          </div>
+        )}
+        {tab === "grids" && !(editingPlan && !locked) && (
+          <BoxGrid
+            plan={plan}
+            me={me}
+            viewing={viewing}
+            onViewingChange={setViewing}
+            boxes={optimisticBoxes}
+            onBoxPress={onBoxPress}
+          />
+        )}
+        {tab === "dates" && (
+          <MoneyDates boxes={optimisticBoxes} dates={moneyDates} now={serverNow} onError={setToast} />
+        )}
+        {tab === "bucket" && <BucketList me={me} items={bucket} stats={stats} onToast={setToast} />}
+        </>
       )}
-      {tab === "dates" && (
-        <MoneyDates boxes={optimisticBoxes} dates={moneyDates} now={serverNow} onError={setToast} />
-      )}
-      {tab === "bucket" && <BucketList me={me} items={bucket} stats={stats} onToast={setToast} />}
 
       <footer className="pb-4 pt-2 text-center text-[11px] text-zinc-500">
         Updates live every few seconds · Auto-logout after 5 min idle

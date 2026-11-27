@@ -3,7 +3,7 @@
 import { useActionState, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { loginAction, type LoginState } from "@/app/actions";
-import { PLAYER_KEYS, PLAYERS, formatINR, COMBINED_TARGET, type Player } from "@/lib/constants";
+import { PLAYER_KEYS, PLAYERS, type Player } from "@/lib/constants";
 import DefaultPinBanner from "./DefaultPinBanner";
 
 const accent: Record<Player, string> = {
@@ -44,7 +44,7 @@ export default function LoginScreen({ defaultPins }: { defaultPins: boolean }) {
         </p>
         <h1 className="mt-1 text-3xl font-extrabold">Husband 🆚 Wife</h1>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          52 boxes each · {formatINR(COMBINED_TARGET)} together
+          One box at a time · one goal together
         </p>
       </header>
 

@@ -10,13 +10,7 @@ export const PLAYERS: Record<
   wife: { name: "Niharika", role: "Wife", emoji: "👩🏻", partner: "husband" },
 };
 
-export const BOX_STEP = 50;
-export const BOX_COUNT = 52;
-/** ₹50, ₹100, … ₹2,600 */
-export const AMOUNTS = Array.from({ length: BOX_COUNT }, (_, i) => (i + 1) * BOX_STEP);
-
-export const INDIVIDUAL_TARGET = AMOUNTS.reduce((a, b) => a + b, 0); // 68,900
-export const COMBINED_TARGET = INDIVIDUAL_TARGET * 2; // 1,37,800
+/** Confetti party every time the two of you cross another ₹10,000 together. */
 export const MILESTONE_STEP = 10_000;
 
 /** Every Sunday of 2027 is a "Money Date": Jan 3 → Dec 26 (52 Sundays). */
