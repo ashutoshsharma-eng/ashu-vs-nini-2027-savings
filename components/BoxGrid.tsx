@@ -1,38 +1,34 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { PLAYER_KEYS, PLAYERS, formatINR, type Player } from "@/lib/constants";
+import { formatINR } from "@/lib/constants";
+import { colorOf } from "@/lib/members";
 import { lastBox, type Plan } from "@/lib/plan";
 import { formatDate } from "@/lib/stats";
-import type { BoxRow } from "@/lib/types";
+import type { BoxRow, Member } from "@/lib/types";
+import MemberPicker from "./MemberPicker";
 
 type Filter = "all" | "remaining" | "completed";
 
-const checkedStyle: Record<Player, string> = {
-  husband: "bg-sky-500 text-white ring-sky-600 dark:bg-sky-600",
-  wife: "bg-pink-500 text-white ring-pink-600 dark:bg-pink-600",
-};
-const tabStyle: Record<Player, string> = {
-  husband: "bg-sky-500 text-white",
-  wife: "bg-pink-500 text-white",
-};
-
 type Props = {
-  me: Player;
-  viewing: Player;
-  onViewingChange: (p: Player) => void;
+  me: Member;
+  members: Member[];
+  viewing: number;
+  onViewingChange: (id: number) => void;
   boxes: BoxRow[];
   onBoxPress: (b: BoxRow) => void;
   plan: Plan;
 };
 
-export default function BoxGrid({ me, viewing, onViewingChange, boxes, onBoxPress, plan }: Props) {
+export default function BoxGrid({ me, members, viewing, onViewingChange, boxes, onBoxPress, plan }: Props) {
   const BOX_COUNT = plan.count;
   const [filter, setFilter] = useState<Filter>("all");
   const [asc, setAsc] = useState(true);
-  const readOnly = viewing !== me;
+  const readOnly = viewing !== me.id;
+  const owner = members.find((m) => m.id === viewing) ?? me;
+  const checkedStyle = colorOf(owner.color).checked;
 
-  const playerBoxes = useMemo(() => boxes.filter((b) => b.player === viewing), [boxes, viewing]);
+  const playerBoxes = useMemo(() => boxes.filter((b) => b.memberId === viewing), [boxes, viewing]);
   const done = playerBoxes.filter((b) => b.isChecked).length;
 
   const visible = useMemo(() => {
@@ -42,8 +38,6 @@ export default function BoxGrid({ me, viewing, onViewingChange, boxes, onBoxPres
     return list.sort((a, b) => (asc ? a.amount - b.amount : b.amount - a.amount));
   }, [playerBoxes, filter, asc]);
 
-  const orderedPlayers = [me, ...PLAYER_KEYS.filter((p) => p !== me)];
-
   const filters: [Filter, string][] = [
     ["all", `All (${BOX_COUNT})`],
     ["remaining", `Remaining (${BOX_COUNT - done})`],
@@ -52,27 +46,14 @@ export default function BoxGrid({ me, viewing, onViewingChange, boxes, onBoxPres
 
   return (
     <section className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
-        {orderedPlayers.map((p) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => onViewingChange(p)}
-            className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
-              viewing === p ? tabStyle[p] : "bg-white ring-1 ring-black/10 dark:bg-zinc-900 dark:ring-white/10"
-            }`}
-          >
-            {p === me ? "My boxes" : `${PLAYERS[p].name}'s`} {p !== me && "🔒"}
-          </button>
-        ))}
-      </div>
+      <MemberPicker me={me} members={members} viewing={viewing} onChange={onViewingChange} mineLabel="My boxes" />
 
       {readOnly && (
         <div className="flex items-center gap-2 rounded-xl bg-zinc-100 px-3 py-2 text-xs text-zinc-600 dark:bg-zinc-800/70 dark:text-zinc-300">
           <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] font-bold text-white dark:bg-white dark:text-zinc-900">
             🔒 READ-ONLY
           </span>
-          You can cheer, but you can&apos;t fill your partner&apos;s boxes.
+          You can cheer {owner.name} on, but only {owner.name} can tick these boxes.
         </div>
       )}
 
@@ -117,7 +98,7 @@ export default function BoxGrid({ me, viewing, onViewingChange, boxes, onBoxPres
                 aria-label={`${formatINR(b.amount)} ${b.isChecked ? "ticked" : "not ticked"}${readOnly ? " (read-only)" : ""}`}
                 className={`relative flex aspect-square w-full flex-col items-center justify-center rounded-xl text-center ring-1 transition select-none ${
                   b.isChecked
-                    ? `${checkedStyle[b.player]} animate-pop shadow-sm`
+                    ? `${checkedStyle} animate-pop shadow-sm`
                     : "bg-white ring-black/10 dark:bg-zinc-900 dark:ring-white/10"
                 } ${readOnly ? "cursor-not-allowed opacity-80" : "active:scale-95"}`}
               >

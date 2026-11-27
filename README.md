@@ -1,37 +1,47 @@
-# Husband 🆚 Wife — 2027 Savings
+# 2027 Savings Challenge
 
-A mobile-first savings challenge for **Ashutosh** and **Niharika**. Before you start, pick a shared
-plan in the app — first box amount, how much each box increases by, and how many boxes (default
-₹100 → ₹5,200 in steps of ₹100 × 52 = **₹1,37,800** each, **₹2,75,600** together). Either of you can
-edit the plan until the first box is ticked; then it's locked for the year. Tick boxes in any order.
+A mobile-first box-ticking savings challenge for **one person, a couple, or a family of up to 8**.
+Everyone gets the same grid of boxes (default ₹100 → ₹5,200 in steps of ₹100 × 52 = **₹1,37,800**
+each) and ticks them in any order. The plan is chosen in the app before you start and locks at the
+first tick.
 
 Built with Next.js (App Router, TypeScript, Tailwind CSS) and Neon serverless Postgres.
 
+## How it adapts to your group
+
+| | Solo (1) | Duo (2) | Group (3–8) |
+|---|---|---|---|
+| Scoreboard | Personal progress card | Side-by-side cards, 👑 leader | Shared goal bar + ranked leaderboard |
+| Sundays | Weekly check-in | Money Date — fewer ticks buys chai | Money Date — fewest ticks buys chai for everyone |
+| Stakes | "Don't break the chain" | Quitter sponsors the other's 2028 trip | Quitter treats everyone on the 2028 trip |
+
 ## Features
 
-- 🔐 Profile picker + 4-digit PIN login (Server Actions, signed HTTP-only cookie)
+- 👥 First-run setup: group name + each person's name, emoji, colour and 4-digit PIN (protected by `SETUP_CODE`)
+- 👑 One admin: add/remove people, edit them, reset PINs, rename the group, hand over the admin role
+- 🔐 PINs hashed (scrypt) in the database; everyone can change their own PIN; signed HTTP-only session cookie
 - ⏱️ Auto-logout after 5 minutes idle (30-second warning; enforced server-side too)
-- 🔒 See both grids live, but only tick your own boxes (enforced server-side)
-- 📊 Live scoreboard: combined progress, totals, boxes completed, leader badge
-- ☕ Money Date every Sunday of 2027 (52) with "who pays for the chai" and notes
-- 🎯 Personal bucket lists — what the money is for (edit your own, view your partner's)
-- ✈️ "Whoever quits first sponsors the other's 2028 trip" banner with last-active dates
-- 🎉 Confetti on each tick; every ₹10,000 together gets a toast, a "Cheers!" card and party poppers
-- 📗 Excel export: Summary (live formulas), each player's boxes, Money Dates, Bucket Lists — colour-coded
-- Filters (All / Remaining / Completed), sort toggle, dark mode, Add to Home Screen
+- 🔒 Everyone sees everyone's grid live, but can only tick their own boxes (enforced server-side)
+- 📋 Shared plan: first box, step (same / suggested / custom), number of boxes, live preview
+- ☕ Every Sunday of 2027 tracked with notes; 🎯 personal bucket lists
+- 🎉 Confetti on each tick; every ₹10,000 crossed gets a toast, a "Cheers!" card and party poppers
+- 📗 Excel export: Summary (live formulas, one column per person), each person's boxes, Sundays, bucket lists
+- Filters, sort toggle, dark mode, Add to Home Screen
 
 ## Zero-touch database
 
-No migrations or seed commands. On first request the app runs `CREATE TABLE IF NOT EXISTS` for
-`challenge_plan`, `boxes`, `sunday_money_dates` and `bucket_items`, and seeds the 52 Sundays if empty
-(boxes are created when you set up the plan). Runs in `lib/db.ts → ensureDbInitialized()`, guarded by an in-memory promise lock. If an older
-version already has ticked ₹50 boxes, that progress is kept and its plan is locked in. Notes and completions
-from the older first-Sunday `money_dates` table are copied over automatically.
+No migrations or seed commands. On first request the app creates any missing tables
+(`group_settings`, `members`, `challenge_plan`, `boxes`, `sunday_money_dates`, `bucket_items`) and
+seeds the 52 Sundays (`lib/db.ts → ensureDbInitialized()`, guarded by an in-memory promise lock).
+
+Upgrading from the original husband-vs-wife version is automatic: Ashutosh (admin) and Niharika
+become members with their existing PINs (`HUSBAND_PIN` / `WIFE_PIN`, or 1111/2222), and all their
+boxes, ticks and bucket items carry over.
 
 ## Run locally
 
 ```bash
-cp .env.example .env.local   # fill in DATABASE_URL and PINs
+cp .env.example .env.local   # fill in DATABASE_URL and SETUP_CODE
 npm install
 npm run dev
 ```
@@ -40,7 +50,8 @@ npm run dev
 
 1. Push this repo to GitHub and import it in Vercel.
 2. Add a Neon database (Vercel → Storage → Neon, or create one at neon.tech).
-3. Set `DATABASE_URL`, `HUSBAND_PIN`, `WIFE_PIN` in Environment Variables.
-4. Deploy, open the URL on your phone, and *Share → Add to Home Screen*.
+3. Set `DATABASE_URL` and `SETUP_CODE` in Environment Variables.
+4. Deploy, open the URL, enter the setup code, add your people, and pick the plan.
+5. On each phone: *Share → Add to Home Screen*.
 
 If `DATABASE_URL` is missing, the app shows a friendly setup screen instead of crashing.

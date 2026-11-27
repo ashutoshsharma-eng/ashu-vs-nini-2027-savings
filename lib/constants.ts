@@ -1,16 +1,4 @@
-export type Player = "husband" | "wife";
-
-export const PLAYER_KEYS: Player[] = ["husband", "wife"];
-
-export const PLAYERS: Record<
-  Player,
-  { name: string; role: string; emoji: string; partner: Player }
-> = {
-  husband: { name: "Ashutosh", role: "Husband", emoji: "🧔🏻", partner: "wife" },
-  wife: { name: "Niharika", role: "Wife", emoji: "👩🏻", partner: "husband" },
-};
-
-/** Confetti party every time the two of you cross another ₹10,000 together. */
+/** Confetti party every time the group crosses another ₹10,000 together. */
 export const MILESTONE_STEP = 10_000;
 
 /** Every Sunday of 2027 is a "Money Date": Jan 3 → Dec 26 (52 Sundays). */
@@ -26,10 +14,6 @@ export const TIME_ZONE = "Asia/Kolkata";
 
 export function formatINR(n: number): string {
   return "₹" + n.toLocaleString("en-IN");
-}
-
-export function isPlayer(v: unknown): v is Player {
-  return v === "husband" || v === "wife";
 }
 
 /** "2027-01-03" → "Sun, 3 Jan" */

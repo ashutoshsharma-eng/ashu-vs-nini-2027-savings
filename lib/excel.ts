@@ -1,14 +1,10 @@
 import "server-only";
 import ExcelJS from "exceljs";
-import {
-  PLAYER_KEYS,
-  PLAYERS,
-  monthOf,
-  type Player,
-} from "./constants";
+import { monthOf } from "./constants";
+import { colorOf } from "./members";
 import { lastBox, planTarget, type Plan } from "./plan";
-import { chaiVerdict, computeStats, leaderOf } from "./stats";
-import type { BoxRow, BucketItem, MoneyDateRow } from "./types";
+import { chaiVerdict, computeStats, groupTotal, leaderOf, stakesLine } from "./stats";
+import type { BoxRow, BucketItem, Member, MoneyDateRow } from "./types";
 
 // Indian digit grouping: ₹1,37,800 / ₹12,34,567
 const INR = '[>=10000000]"₹"##\\,##\\,##\\,##0;[>=100000]"₹"##\\,##\\,##0;"₹"#,##0';
@@ -20,15 +16,10 @@ const COLORS = {
   ink: "FF18181B",
   white: "FFFFFFFF",
   title: "FF1E1B4B",
-  husband: "FF0284C7",
-  husbandLight: "FFE0F2FE",
-  wife: "FFDB2777",
-  wifeLight: "FFFCE7F3",
   combined: "FF059669",
   combinedLight: "FFD1FAE5",
   done: "FFDCFCE7",
   doneText: "FF166534",
-  pending: "FFF4F4F5",
   pendingText: "FF71717A",
   amber: "FFFEF3C7",
   amberText: "FF92400E",
@@ -39,6 +30,7 @@ const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 /** Excel has no time zones: shift so the sheet shows Indian time. */
 const toIST = (iso: string) => new Date(new Date(iso).getTime() + IST_OFFSET_MS);
 const dateOnly = (ymd: string) => new Date(`${ymd}T00:00:00Z`);
+const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
 const fill = (argb: string): ExcelJS.Fill => ({ type: "pattern", pattern: "solid", fgColor: { argb } });
 const thin: Partial<ExcelJS.Borders> = {
@@ -47,6 +39,12 @@ const thin: Partial<ExcelJS.Borders> = {
   left: { style: "thin", color: { argb: COLORS.border } },
   right: { style: "thin", color: { argb: COLORS.border } },
 };
+
+const solid = (m: Member) => `FF${colorOf(m.color).hex}`;
+const light = (m: Member) => `FF${colorOf(m.color).lightHex}`;
+
+/** A → 1, B → 2 … (enough for 1 + 8 members + combined). */
+const col = (n: number) => String.fromCharCode(64 + n);
 
 function styleHeader(row: ExcelJS.Row, argb: string) {
   row.height = 22;
@@ -83,105 +81,118 @@ function addTitle(ws: ExcelJS.Worksheet, title: string, subtitle: string, lastCo
   s.alignment = { indent: 1 };
 }
 
-const playerColor = (p: Player) => (p === "husband" ? COLORS.husband : COLORS.wife);
-const playerLight = (p: Player) => (p === "husband" ? COLORS.husbandLight : COLORS.wifeLight);
-const boxesSheetName = (p: Player) => `${PLAYERS[p].name} Boxes`;
-const bucketSheetName = "Bucket Lists";
+/** Excel sheet names: ≤31 chars, no []:*?/\ and unique. */
+function sheetNames(members: Member[]): Map<number, string> {
+  const used = new Set<string>(["summary", "money dates", "bucket lists"]);
+  const out = new Map<number, string>();
+  for (const m of members) {
+    const base = m.name.replace(/[[\]:*?/\\']/g, "").trim().slice(0, 24) || `Member ${m.id}`;
+    let name = `${base} Boxes`;
+    for (let i = 2; used.has(name.toLowerCase()); i++) name = `${base.slice(0, 21)} ${i} Boxes`;
+    used.add(name.toLowerCase());
+    out.set(m.id, name);
+  }
+  return out;
+}
+
+const BUCKET_SHEET = "Bucket Lists";
 
 export async function buildWorkbook(data: {
+  groupName: string;
+  members: Member[];
   boxes: BoxRow[];
   dates: MoneyDateRow[];
   bucket: BucketItem[];
   plan: Plan;
 }): Promise<Buffer> {
-  const { boxes, dates, bucket, plan } = data;
-  const BOX_COUNT = plan.count;
-  const INDIVIDUAL_TARGET = planTarget(plan);
-  const COMBINED_TARGET = INDIVIDUAL_TARGET * 2;
-  const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
-  const stats = computeStats(boxes);
-  const leader = leaderOf(stats);
+  const { groupName, members, boxes, dates, bucket, plan } = data;
+  const solo = members.length === 1;
+  const each = planTarget(plan);
+  const goal = each * members.length;
+  const stats = computeStats(boxes, members);
+  const total = groupTotal(stats, members);
+  const leader = leaderOf(stats, members);
+  const names = sheetNames(members);
   const exportedAt = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Husband vs Wife 2027";
+  wb.creator = groupName;
   wb.created = new Date();
 
   // -------------------------------------------------------------------------
-  // Summary
+  // Summary: one column per person (+ a Combined column for groups)
   // -------------------------------------------------------------------------
   const sum = wb.addWorksheet("Summary", {
     views: [{ showGridLines: false }],
     properties: { tabColor: { argb: COLORS.title } },
   });
-  sum.columns = [{ width: 30 }, { width: 22 }, { width: 22 }, { width: 22 }];
+  const memberCols = members.map((_, i) => i + 2); // B, C, …
+  const combinedCol = solo ? null : members.length + 2;
+  const lastCol = col(combinedCol ?? members.length + 1);
+  sum.columns = [{ width: 30 }, ...members.map(() => ({ width: 20 })), ...(solo ? [] : [{ width: 20 }])];
   addTitle(
     sum,
-    "Husband 🆚 Wife — 2027 Savings",
-    `Plan: ${inr(plan.start)} → ${inr(lastBox(plan))} in steps of ${inr(plan.step)} · ${BOX_COUNT} boxes each · exported ${exportedAt} IST`,
-    "D",
+    `${groupName} — 2027 Savings`,
+    `Plan: ${inr(plan.start)} → ${inr(lastBox(plan))} in steps of ${inr(plan.step)} · ${plan.count} boxes each · exported ${exportedAt} IST`,
+    lastCol,
   );
   sum.addRow([]);
 
-  const head = sum.addRow(["", PLAYERS.husband.name, PLAYERS.wife.name, "Combined"]);
+  const head = sum.addRow(["", ...members.map((m) => `${m.name}${m.isAdmin ? " (admin)" : ""}`), ...(solo ? [] : ["Combined"])]);
   styleHeader(head, COLORS.title);
-  head.getCell(2).fill = fill(COLORS.husband);
-  head.getCell(3).fill = fill(COLORS.wife);
-  head.getCell(4).fill = fill(COLORS.combined);
+  members.forEach((m, i) => (head.getCell(memberCols[i]).fill = fill(solid(m))));
+  if (combinedCol) head.getCell(combinedCol).fill = fill(COLORS.combined);
 
-  const ref = (p: Player, col: string) => `'${boxesSheetName(p)}'!${col}:${col}`;
-  const savedF = (p: Player) => `SUMIFS(${ref(p, "B")},${ref(p, "C")},"Done")`;
-  const countF = (p: Player) => `COUNTIFS(${ref(p, "C")},"Done")`;
+  const ref = (m: Member, c: string) => `'${names.get(m.id)}'!${c}:${c}`;
+  const sumAcross = (rowNum: number) =>
+    `SUM(${col(memberCols[0])}${rowNum}:${col(memberCols[memberCols.length - 1])}${rowNum})`;
 
-  const metric = (label: string, cells: ExcelJS.CellValue[], numFmt?: string, bold = false) => {
-    const row = sum.addRow([label, ...cells]);
+  /** Adds a metric row; `combined` is the formula/value for the Combined column (groups only). */
+  const metric = (
+    label: string,
+    perMember: ExcelJS.CellValue[],
+    combined: (rowNum: number) => ExcelJS.CellValue,
+    numFmt?: string,
+    bold = false,
+  ) => {
+    const row = sum.addRow([label, ...perMember]);
+    if (combinedCol) row.getCell(combinedCol).value = combined(row.number);
     styleBody(row);
     row.getCell(1).font = { bold: true };
-    for (let c = 2; c <= 4; c++) {
+    members.forEach((m, i) => (row.getCell(memberCols[i]).fill = fill(light(m))));
+    if (combinedCol) row.getCell(combinedCol).fill = fill(COLORS.combinedLight);
+    for (let c = 2; c <= (combinedCol ?? members.length + 1); c++) {
       const cell = row.getCell(c);
       cell.alignment = { horizontal: "right", vertical: "middle" };
       if (numFmt) cell.numFmt = numFmt;
       if (bold) cell.font = { bold: true };
     }
-    row.getCell(2).fill = fill(COLORS.husbandLight);
-    row.getCell(3).fill = fill(COLORS.wifeLight);
-    row.getCell(4).fill = fill(COLORS.combinedLight);
     return row;
   };
 
   const savedRow = metric(
     "Total saved",
-    [
-      { formula: savedF("husband"), result: stats.husband.total },
-      { formula: savedF("wife"), result: stats.wife.total },
-      { formula: "", result: stats.husband.total + stats.wife.total },
-    ],
+    members.map((m) => ({ formula: `SUMIFS(${ref(m, "B")},${ref(m, "C")},"Done")`, result: stats[m.id].total })),
+    (r) => ({ formula: sumAcross(r), result: total }),
     INR,
     true,
   );
-  savedRow.getCell(4).value = {
-    formula: `B${savedRow.number}+C${savedRow.number}`,
-    result: stats.husband.total + stats.wife.total,
-  };
-
-  const targetRow = metric("Target", [INDIVIDUAL_TARGET, INDIVIDUAL_TARGET, COMBINED_TARGET], INR);
+  const targetRow = metric("Target", members.map(() => each), () => goal, INR);
   const pctRow = metric(
     "Progress",
-    ["B", "C", "D"].map((col, i) => ({
-      formula: `IFERROR(${col}${savedRow.number}/${col}${targetRow.number},0)`,
-      result:
-        i === 0
-          ? stats.husband.total / INDIVIDUAL_TARGET
-          : i === 1
-            ? stats.wife.total / INDIVIDUAL_TARGET
-            : (stats.husband.total + stats.wife.total) / COMBINED_TARGET,
+    members.map((m, i) => ({
+      formula: `IFERROR(${col(memberCols[i])}${savedRow.number}/${col(memberCols[i])}${targetRow.number},0)`,
+      result: each ? stats[m.id].total / each : 0,
     })),
+    () => ({
+      formula: `IFERROR(${col(combinedCol ?? 2)}${savedRow.number}/${col(combinedCol ?? 2)}${targetRow.number},0)`,
+      result: goal ? total / goal : 0,
+    }),
     PCT,
     true,
   );
-  // Progress bars right in the cells
   sum.addConditionalFormatting({
-    ref: `B${pctRow.number}:D${pctRow.number}`,
+    ref: `B${pctRow.number}:${lastCol}${pctRow.number}`,
     rules: [
       {
         type: "dataBar",
@@ -197,100 +208,77 @@ export async function buildWorkbook(data: {
       } as unknown as ExcelJS.ConditionalFormattingRule,
     ],
   });
-
-  const doneRow = metric("Boxes completed", [
-    { formula: countF("husband"), result: stats.husband.count },
-    { formula: countF("wife"), result: stats.wife.count },
-    { formula: "", result: stats.husband.count + stats.wife.count },
-  ]);
-  doneRow.getCell(4).value = {
-    formula: `B${doneRow.number}+C${doneRow.number}`,
-    result: stats.husband.count + stats.wife.count,
-  };
-  metric("Boxes remaining", [
-    { formula: `${BOX_COUNT}-B${doneRow.number}`, result: BOX_COUNT - stats.husband.count },
-    { formula: `${BOX_COUNT}-C${doneRow.number}`, result: BOX_COUNT - stats.wife.count },
-    {
-      formula: `${BOX_COUNT * 2}-D${doneRow.number}`,
-      result: BOX_COUNT * 2 - stats.husband.count - stats.wife.count,
-    },
-  ]);
-  const lastRow = metric(
+  const doneRow = metric(
+    "Boxes completed",
+    members.map((m) => ({ formula: `COUNTIFS(${ref(m, "C")},"Done")`, result: stats[m.id].count })),
+    (r) => ({ formula: sumAcross(r), result: members.reduce((a, m) => a + stats[m.id].count, 0) }),
+  );
+  metric(
+    "Boxes remaining",
+    members.map((m, i) => ({
+      formula: `${plan.count}-${col(memberCols[i])}${doneRow.number}`,
+      result: plan.count - stats[m.id].count,
+    })),
+    (r) => ({ formula: sumAcross(r), result: plan.count * members.length - members.reduce((a, m) => a + stats[m.id].count, 0) }),
+  );
+  metric(
     "Last active",
-    [
-      stats.husband.lastActive ? toIST(stats.husband.lastActive) : "—",
-      stats.wife.lastActive ? toIST(stats.wife.lastActive) : "—",
-      "",
-    ],
+    members.map((m) => (stats[m.id].lastActive ? toIST(stats[m.id].lastActive as string) : "—")),
+    () => null,
     DATE_TIME,
   );
-  lastRow.getCell(4).value = null;
 
-  const planned = (p: Player) =>
-    bucket.filter((b) => b.player === p).reduce((a, b) => a + (b.estCost ?? 0), 0);
-  const bref = (col: string) => `'${bucketSheetName}'!${col}:${col}`;
-  const plannedRow = metric(
+  const bref = (c: string) => `'${BUCKET_SHEET}'!${c}:${c}`;
+  const planned = (m: Member) => bucket.filter((b) => b.memberId === m.id).reduce((a, b) => a + (b.estCost ?? 0), 0);
+  metric(
     "Bucket list — planned spend",
-    PLAYER_KEYS.map((p) => ({
-      formula: `SUMIFS(${bref("C")},${bref("A")},"${PLAYERS[p].name}")`,
-      result: planned(p),
-    })),
+    members.map((m) => ({ formula: `SUMIFS(${bref("C")},${bref("A")},"${m.name}")`, result: planned(m) })),
+    (r) => ({ formula: sumAcross(r), result: members.reduce((a, m) => a + planned(m), 0) }),
     INR,
   );
-  plannedRow.getCell(4).value = {
-    formula: `B${plannedRow.number}+C${plannedRow.number}`,
-    result: planned("husband") + planned("wife"),
-  };
   metric(
     "Bucket list — items done",
-    [
-      ...PLAYER_KEYS.map((p) => ({
-        formula: `COUNTIFS(${bref("A")},"${PLAYERS[p].name}",${bref("D")},"Done")`,
-        result: bucket.filter((b) => b.player === p && b.isDone).length,
-      })),
-      bucket.filter((b) => b.isDone).length,
-    ],
+    members.map((m) => ({
+      formula: `COUNTIFS(${bref("A")},"${m.name}",${bref("D")},"Done")`,
+      result: bucket.filter((b) => b.memberId === m.id && b.isDone).length,
+    })),
+    (r) => ({ formula: sumAcross(r), result: bucket.filter((b) => b.isDone).length }),
   );
 
   sum.addRow([]);
-  const leadRow = sum.addRow([
-    "🏆 Current leader",
-    leader ? `${PLAYERS[leader].name} (by ₹${Math.abs(stats.husband.total - stats.wife.total).toLocaleString("en-IN")})` : "Tied",
-  ]);
-  sum.mergeCells(`B${leadRow.number}:D${leadRow.number}`);
-  leadRow.getCell(1).font = { bold: true };
-  leadRow.getCell(2).font = { bold: true, color: { argb: COLORS.amberText } };
-  leadRow.getCell(2).fill = fill(COLORS.amber);
-
-  const stakes = sum.addRow(["✈️ Whoever quits first sponsors the other's 2028 trip"]);
-  sum.mergeCells(`A${stakes.number}:D${stakes.number}`);
+  if (!solo) {
+    const leadRow = sum.addRow([
+      "🏆 Current leader",
+      leader ? `${leader.name} (${inr(stats[leader.id].total)})` : "Tied",
+    ]);
+    sum.mergeCells(`B${leadRow.number}:${lastCol}${leadRow.number}`);
+    leadRow.getCell(1).font = { bold: true };
+    leadRow.getCell(2).font = { bold: true, color: { argb: COLORS.amberText } };
+    leadRow.getCell(2).fill = fill(COLORS.amber);
+  }
+  const stakes = sum.addRow([stakesLine(members.length)]);
+  sum.mergeCells(`A${stakes.number}:${lastCol}${stakes.number}`);
   stakes.getCell(1).font = { italic: true, color: { argb: COLORS.title } };
 
   // -------------------------------------------------------------------------
-  // One sheet per player's boxes
+  // One sheet per person's boxes
   // -------------------------------------------------------------------------
-  for (const p of PLAYER_KEYS) {
-    const ws = wb.addWorksheet(boxesSheetName(p), {
+  for (const m of members) {
+    const ws = wb.addWorksheet(names.get(m.id) as string, {
       views: [{ state: "frozen", ySplit: 3, showGridLines: false }],
-      properties: { tabColor: { argb: playerColor(p) } },
+      properties: { tabColor: { argb: solid(m) } },
     });
-    ws.columns = [
-      { key: "n", width: 8 },
-      { key: "amount", width: 14 },
-      { key: "status", width: 13 },
-      { key: "at", width: 24 },
-      { key: "running", width: 18 },
-    ];
+    ws.columns = [{ width: 8 }, { width: 14 }, { width: 13 }, { width: 24 }, { width: 18 }];
     addTitle(
       ws,
-      `${PLAYERS[p].emoji} ${PLAYERS[p].name}'s ${BOX_COUNT} boxes`,
-      `${inr(plan.start)} → ${inr(lastBox(plan))} · target ${inr(INDIVIDUAL_TARGET)}`,
+      `${m.emoji} ${m.name}'s ${plan.count} boxes`,
+      `${inr(plan.start)} → ${inr(lastBox(plan))} · target ${inr(each)}`,
       "E",
     );
     const h = ws.addRow(["Box #", "Amount", "Status", "Ticked on (IST)", "Saved so far"]);
-    styleHeader(h, playerColor(p));
+    styleHeader(h, solid(m));
 
-    const mine = boxes.filter((b) => b.player === p).sort((a, b) => a.amount - b.amount);
+    const mine = boxes.filter((b) => b.memberId === m.id).sort((a, b) => a.amount - b.amount);
     const first = h.number + 1;
     mine.forEach((b, i) => {
       const r = ws.addRow([
@@ -308,15 +296,15 @@ export async function buildWorkbook(data: {
       r.getCell(5).numFmt = INR;
       if (!b.isChecked) r.getCell(3).font = { color: { argb: COLORS.pendingText } };
     });
-    const last = first + mine.length - 1;
+    const last = first + Math.max(mine.length, 1) - 1;
     const tot = ws.addRow([
       "Total",
-      { formula: `SUBTOTAL(109,B${first}:B${last})`, result: INDIVIDUAL_TARGET },
-      { formula: `COUNTIF(C${first}:C${last},"Done")&" / ${mine.length} done"`, result: `${stats[p].count} / ${mine.length} done` },
+      { formula: `SUBTOTAL(109,B${first}:B${last})`, result: each },
+      { formula: `COUNTIF(C${first}:C${last},"Done")&" / ${mine.length} done"`, result: `${stats[m.id].count} / ${mine.length} done` },
       "",
-      { formula: `SUMIFS(B${first}:B${last},C${first}:C${last},"Done")`, result: stats[p].total },
+      { formula: `SUMIFS(B${first}:B${last},C${first}:C${last},"Done")`, result: stats[m.id].total },
     ]);
-    styleBody(tot, playerLight(p));
+    styleBody(tot, light(m));
     tot.font = { bold: true };
     tot.getCell(2).numFmt = INR;
     tot.getCell(5).numFmt = INR;
@@ -330,27 +318,26 @@ export async function buildWorkbook(data: {
     views: [{ state: "frozen", ySplit: 3, showGridLines: false }],
     properties: { tabColor: { argb: "FFF59E0B" } },
   });
-  md.columns = [
-    { width: 7 },
-    { width: 20 },
-    { width: 16 },
-    { width: 12 },
-    { width: 16 },
-    { width: 34 },
-    { width: 40 },
-  ];
-  addTitle(md, "☕ Sunday Money Dates — 2027", "Every Sunday: review the boxes together. Fewer ticks that week buys the chai.", "G");
-  const mh = md.addRow(["Week", "Sunday", "Month", "Done?", "Chai paid by", "Why", "Notes"]);
+  md.columns = [{ width: 7 }, { width: 20 }, { width: 16 }, { width: 12 }, { width: 18 }, { width: 38 }, { width: 40 }];
+  addTitle(
+    md,
+    solo ? "🗓️ Sunday check-ins — 2027" : "☕ Sunday Money Dates — 2027",
+    solo
+      ? "Every Sunday: look back at your week."
+      : "Every Sunday: review the boxes together. Fewest ticks that week buys the chai.",
+    "G",
+  );
+  const mh = md.addRow(["Week", "Sunday", "Month", "Done?", solo ? "—" : "Chai paid by", solo ? "Note" : "Why", "Notes"]);
   styleHeader(mh, "FFD97706");
   for (const d of dates) {
-    const v = chaiVerdict(boxes, d.weekIndex);
+    const v = chaiVerdict(boxes, members, d.weekIndex);
     const r = md.addRow([
       d.weekIndex,
       dateOnly(d.sundayDate),
       monthOf(d.sundayDate),
       d.isCompleted ? "✅ Yes" : "No",
-      v.payer ? PLAYERS[v.payer].name : "Split 🤝",
-      v.reason,
+      solo ? "" : v.payer ? v.payer.name : "Split 🤝",
+      solo ? "" : v.reason,
       d.notes,
     ]);
     styleBody(r, d.isCompleted ? COLORS.done : undefined);
@@ -359,7 +346,7 @@ export async function buildWorkbook(data: {
     r.getCell(4).alignment = { horizontal: "center", vertical: "middle" };
     r.getCell(4).font = { bold: d.isCompleted, color: { argb: d.isCompleted ? COLORS.doneText : COLORS.pendingText } };
     const payer = r.getCell(5);
-    payer.font = { bold: true, color: { argb: v.payer ? playerColor(v.payer) : COLORS.ink } };
+    payer.font = { bold: true, color: { argb: v.payer ? solid(v.payer) : COLORS.ink } };
     payer.alignment = { horizontal: "center", vertical: "middle" };
     r.getCell(6).font = { color: { argb: COLORS.pendingText } };
     r.getCell(7).alignment = { wrapText: true, vertical: "middle" };
@@ -369,27 +356,24 @@ export async function buildWorkbook(data: {
   // -------------------------------------------------------------------------
   // Bucket lists
   // -------------------------------------------------------------------------
-  const bl = wb.addWorksheet(bucketSheetName, {
+  const bl = wb.addWorksheet(BUCKET_SHEET, {
     views: [{ state: "frozen", ySplit: 3, showGridLines: false }],
     properties: { tabColor: { argb: "FF7C3AED" } },
   });
-  bl.columns = [{ width: 14 }, { width: 42 }, { width: 16 }, { width: 12 }, { width: 18 }];
-  addTitle(bl, "🎯 What the money is for", "Each person's own bucket list", "E");
+  bl.columns = [{ width: 16 }, { width: 42 }, { width: 16 }, { width: 12 }, { width: 18 }];
+  addTitle(bl, "🎯 What the money is for", solo ? "My bucket list" : "Each person's own bucket list", "E");
   const bh = bl.addRow(["Owner", "Item", "Est. cost", "Status", "Added on"]);
   styleHeader(bh, "FF7C3AED");
-  const ordered = [...bucket].sort((a, b) =>
-    a.player === b.player ? a.createdAt.localeCompare(b.createdAt) : a.player.localeCompare(b.player),
-  );
+  const byId = new Map(members.map((m) => [m.id, m]));
+  const order = new Map(members.map((m, i) => [m.id, i]));
+  const ordered = [...bucket]
+    .filter((b) => byId.has(b.memberId))
+    .sort((a, b) => (order.get(a.memberId)! - order.get(b.memberId)!) || a.createdAt.localeCompare(b.createdAt));
   for (const item of ordered) {
-    const r = bl.addRow([
-      PLAYERS[item.player].name,
-      item.title,
-      item.estCost ?? "",
-      item.isDone ? "Done" : "Planned",
-      toIST(item.createdAt),
-    ]);
-    styleBody(r, item.isDone ? COLORS.done : playerLight(item.player));
-    r.getCell(1).font = { bold: true, color: { argb: playerColor(item.player) } };
+    const m = byId.get(item.memberId) as Member;
+    const r = bl.addRow([m.name, item.title, item.estCost ?? "", item.isDone ? "Done" : "Planned", toIST(item.createdAt)]);
+    styleBody(r, item.isDone ? COLORS.done : light(m));
+    r.getCell(1).font = { bold: true, color: { argb: solid(m) } };
     r.getCell(2).alignment = { wrapText: true, vertical: "middle" };
     r.getCell(3).numFmt = INR;
     r.getCell(4).alignment = { horizontal: "center", vertical: "middle" };
@@ -401,11 +385,11 @@ export async function buildWorkbook(data: {
     r.getCell(2).font = { italic: true, color: { argb: COLORS.pendingText } };
   }
   bl.addRow([]);
-  for (const p of PLAYER_KEYS) {
-    const r = bl.addRow([`${PLAYERS[p].name} total`, "", planned(p)]);
+  for (const m of members) {
+    const r = bl.addRow([`${m.name} total`, "", planned(m)]);
     r.font = { bold: true };
     r.getCell(3).numFmt = INR;
-    styleBody(r, playerLight(p));
+    styleBody(r, light(m));
   }
 
   // Print nicely: one page wide, as many pages tall as needed.

@@ -2,18 +2,21 @@
 
 import { useState, useTransition } from "react";
 import { updateMoneyDateAction } from "@/app/actions";
-import { PLAYERS, formatSunday, monthOf } from "@/lib/constants";
+import { formatSunday, monthOf } from "@/lib/constants";
 import { chaiVerdict, endOfDayIST } from "@/lib/stats";
-import type { BoxRow, MoneyDateRow } from "@/lib/types";
+import type { BoxRow, Member, MoneyDateRow } from "@/lib/types";
 
 type Props = {
+  members: Member[];
   boxes: BoxRow[];
   dates: MoneyDateRow[];
   now: number;
   onError: (msg: string) => void;
 };
 
-export default function MoneyDates({ boxes, dates, now, onError }: Props) {
+export default function MoneyDates({ members, boxes, dates, now, onError }: Props) {
+  const solo = members.length === 1;
+  const title = solo ? "Sunday check-in" : "Money Date";
   const done = dates.filter((d) => d.isCompleted).length;
   const next = dates.find((d) => endOfDayIST(d.sundayDate) >= now) ?? null;
   const nextMonth = next ? monthOf(next.sundayDate) : null;
@@ -31,10 +34,13 @@ export default function MoneyDates({ boxes, dates, now, onError }: Props) {
       <div className="rounded-2xl bg-white p-4 text-sm shadow-sm ring-1 ring-black/5 dark:bg-zinc-900 dark:ring-white/10">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="font-semibold">Every Sunday = Money Date 💑</p>
+            <p className="font-semibold">Every Sunday = {title} {solo ? "🗓️" : members.length === 2 ? "💑" : "👨‍👩‍👧‍👦"}</p>
             <p className="mt-1 text-zinc-600 dark:text-zinc-400">
-              Review the week together. Whoever ticked fewer boxes that week buys the chai (ties
-              fall back to total ticks).
+              {solo
+                ? "Look back at your week: which boxes did you tick, and what's next? Treat yourself to a chai if you ticked one."
+                : members.length === 2
+                  ? "Review the week together. Whoever ticked fewer boxes that week buys the chai (ties fall back to total ticks)."
+                  : "Review the week together. Whoever ticked the fewest boxes that week buys chai for everyone (ties fall back to total ticks)."}
             </p>
           </div>
           <div className="shrink-0 rounded-xl bg-emerald-50 px-3 py-2 text-center dark:bg-emerald-950/40">
@@ -56,7 +62,7 @@ export default function MoneyDates({ boxes, dates, now, onError }: Props) {
             }
             className="mt-3 w-full rounded-xl bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-800 active:scale-[0.99] dark:bg-amber-900/40 dark:text-amber-300"
           >
-            ⏭ Next Money Date: {formatSunday(next.sundayDate, true)} — jump there
+            ⏭ Next {title}: {formatSunday(next.sundayDate, true)} — jump there
           </button>
         )}
       </div>
@@ -85,6 +91,7 @@ export default function MoneyDates({ boxes, dates, now, onError }: Props) {
                   key={`${d.id}-${d.isCompleted}-${d.notes}`}
                   date={d}
                   boxes={boxes}
+                  members={members}
                   isNext={next?.weekIndex === d.weekIndex}
                   onError={onError}
                 />
@@ -100,18 +107,20 @@ export default function MoneyDates({ boxes, dates, now, onError }: Props) {
 function MoneyDateCard({
   date,
   boxes,
+  members,
   isNext,
   onError,
 }: {
   date: MoneyDateRow;
   boxes: BoxRow[];
+  members: Member[];
   isNext: boolean;
   onError: (msg: string) => void;
 }) {
   const [completed, setCompleted] = useState(date.isCompleted);
   const [note, setNote] = useState(date.notes);
   const [pending, startTransition] = useTransition();
-  const verdict = chaiVerdict(boxes, date.weekIndex);
+  const verdict = chaiVerdict(boxes, members, date.weekIndex);
 
   function save(nextCompleted: boolean, nextNote: string) {
     startTransition(async () => {
@@ -146,13 +155,15 @@ function MoneyDateCard({
             )}
           </div>
           <div className="mt-0.5 truncate text-xs font-semibold text-amber-700 dark:text-amber-300">
-            ☕ Who pays for the chai →{" "}
-            {verdict.payer ? `${PLAYERS[verdict.payer].emoji} ${PLAYERS[verdict.payer].name}` : "Both 🤝"}
+            {members.length < 2
+              ? "☕ Your weekly check-in"
+              : <>☕ Who pays for the chai →{" "}
+                {verdict.payer ? `${verdict.payer.emoji} ${verdict.payer.name}` : members.length === 2 ? "Both 🤝" : "Everyone splits 🤝"}</>}
           </div>
           <div className="truncate text-[10px] text-zinc-500">{verdict.reason}</div>
         </div>
         <label className="flex shrink-0 cursor-pointer items-center gap-2">
-          <span className="sr-only">Mark Money Date done</span>
+          <span className="sr-only">Mark this Sunday done</span>
           <input
             type="checkbox"
             className="peer sr-only"

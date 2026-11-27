@@ -6,41 +6,39 @@ import {
   deleteBucketItemAction,
   updateBucketItemAction,
 } from "@/app/actions";
-import { PLAYER_KEYS, PLAYERS, formatINR, type Player } from "@/lib/constants";
-import type { PlayerStats } from "@/lib/stats";
-import type { BucketItem } from "@/lib/types";
+import { formatINR } from "@/lib/constants";
+import type { StatsById } from "@/lib/stats";
+import type { BucketItem, Member } from "@/lib/types";
 import ConfirmSheet from "./ConfirmSheet";
+import MemberPicker from "./MemberPicker";
 
 type Props = {
-  me: Player;
+  me: Member;
+  members: Member[];
   items: BucketItem[];
-  stats: Record<Player, PlayerStats>;
+  stats: StatsById;
   onToast: (msg: string) => void;
 };
 
-const tabStyle: Record<Player, string> = {
-  husband: "bg-sky-500 text-white",
-  wife: "bg-pink-500 text-white",
-};
 
 function parseCost(v: string): number | null {
   const n = Number(v.replace(/[₹,\s]/g, ""));
   return v.trim() === "" || !Number.isFinite(n) ? null : n;
 }
 
-export default function BucketList({ me, items, stats, onToast }: Props) {
-  const [viewing, setViewing] = useState<Player>(me);
+export default function BucketList({ me, members, items, stats, onToast }: Props) {
+  const [viewing, setViewing] = useState<number>(me.id);
   const [title, setTitle] = useState("");
   const [cost, setCost] = useState("");
   const [adding, startAdding] = useTransition();
   const [confirmDelete, setConfirmDelete] = useState<BucketItem | null>(null);
-  const readOnly = viewing !== me;
+  const readOnly = viewing !== me.id;
+  const owner = members.find((m) => m.id === viewing) ?? me;
 
-  const list = items.filter((i) => i.player === viewing);
+  const list = items.filter((i) => i.memberId === viewing);
   const planned = list.reduce((a, i) => a + (i.estCost ?? 0), 0);
-  const saved = stats[viewing].total;
+  const saved = stats[viewing]?.total ?? 0;
   const covered = planned > 0 ? Math.min(100, (saved / planned) * 100) : 0;
-  const orderedPlayers = [me, ...PLAYER_KEYS.filter((p) => p !== me)];
 
   function add(e: React.FormEvent) {
     e.preventDefault();
@@ -58,24 +56,11 @@ export default function BucketList({ me, items, stats, onToast }: Props) {
 
   return (
     <section className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
-        {orderedPlayers.map((p) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => setViewing(p)}
-            className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
-              viewing === p ? tabStyle[p] : "bg-white ring-1 ring-black/10 dark:bg-zinc-900 dark:ring-white/10"
-            }`}
-          >
-            {p === me ? "My bucket list" : `${PLAYERS[p].name}'s 🔒`}
-          </button>
-        ))}
-      </div>
+      <MemberPicker me={me} members={members} viewing={viewing} onChange={setViewing} mineLabel="My bucket list" />
 
       <div className="rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-600 p-4 text-white shadow-md">
         <p className="text-xs font-semibold uppercase tracking-wider text-white/70">
-          {readOnly ? `${PLAYERS[viewing].name}'s plans` : "What my money is for"}
+          {readOnly ? `${owner.name}'s plans` : "What my money is for"}
         </p>
         <div className="mt-1 flex items-baseline justify-between gap-2">
           <span className="text-2xl font-extrabold tabular-nums">{formatINR(planned)}</span>
@@ -98,7 +83,7 @@ export default function BucketList({ me, items, stats, onToast }: Props) {
           <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] font-bold text-white dark:bg-white dark:text-zinc-900">
             🔒 READ-ONLY
           </span>
-          Only {PLAYERS[viewing].name} can edit this list.
+          Only {owner.name} can edit this list.
         </div>
       ) : (
         <form
@@ -136,7 +121,7 @@ export default function BucketList({ me, items, stats, onToast }: Props) {
       {list.length === 0 ? (
         <p className="rounded-2xl bg-white p-8 text-center text-sm text-zinc-500 ring-1 ring-black/5 dark:bg-zinc-900 dark:ring-white/10">
           {readOnly
-            ? `${PLAYERS[viewing].name} hasn't added anything yet 👀`
+            ? `${owner.name} hasn't added anything yet 👀`
             : "Nothing here yet — what are you saving for? 🎯"}
         </p>
       ) : (

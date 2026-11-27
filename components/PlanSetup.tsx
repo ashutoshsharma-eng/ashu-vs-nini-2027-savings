@@ -16,6 +16,7 @@ import {
 
 type Props = {
   plan: Plan;
+  memberCount: number;
   mode: "initial" | "edit";
   onDone?: () => void;
   onError: (msg: string) => void;
@@ -38,7 +39,8 @@ const chip = (active: boolean) =>
 const field =
   "w-full rounded-xl bg-zinc-50 px-3 py-3 text-lg font-bold tabular-nums ring-1 ring-black/10 outline-none focus:ring-2 focus:ring-emerald-500 dark:bg-zinc-800 dark:ring-white/10";
 
-export default function PlanSetup({ plan, mode, onDone, onError }: Props) {
+export default function PlanSetup({ plan, memberCount, mode, onDone, onError }: Props) {
+  const solo = memberCount === 1;
   const [startText, setStartText] = useState(String(plan.start));
   const [stepMode, setStepMode] = useState<string>(
     plan.step === plan.start ? SAME : STEP_SUGGESTIONS.includes(plan.step) ? String(plan.step) : CUSTOM,
@@ -72,8 +74,9 @@ export default function PlanSetup({ plan, mode, onDone, onError }: Props) {
           {mode === "initial" ? "Set up your challenge 🎯" : "Edit the plan ✏️"}
         </h2>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          You both play the same plan. Either of you can change it until the first box is ticked —
-          then it&apos;s locked for the year.
+          {solo
+            ? "Pick how your boxes grow. You can change it until you tick your first box — then it's locked for the year."
+            : `Everyone plays the same plan. Anyone can change it until the first box is ticked — then it's locked for the year.`}
         </p>
       </div>
 
@@ -130,7 +133,7 @@ export default function PlanSetup({ plan, mode, onDone, onError }: Props) {
 
       <div className="space-y-2">
         <label htmlFor="plan-count" className="text-sm font-semibold">
-          Number of boxes each
+          Number of boxes{solo ? "" : " each"}
         </label>
         <div className="flex items-center gap-2">
           <input
@@ -167,18 +170,22 @@ export default function PlanSetup({ plan, mode, onDone, onError }: Props) {
             <p className="mt-1 text-sm font-semibold">
               {formatINR(start)} → {formatINR(lastBox(draft))} · {count} boxes in steps of {formatINR(step)}
             </p>
-            <div className="mt-3 grid grid-cols-2 gap-3">
+            <div className={`mt-3 grid gap-3 ${solo ? "grid-cols-1" : "grid-cols-2"}`}>
               <div>
-                <div className="text-[11px] uppercase text-white/80">Each of you saves</div>
+                <div className="text-[11px] uppercase text-white/80">{solo ? "You'll save" : "Each person saves"}</div>
                 <div className="text-xl font-extrabold tabular-nums">{formatINR(each)}</div>
               </div>
-              <div>
-                <div className="text-[11px] uppercase text-white/80">Together</div>
-                <div className="text-xl font-extrabold tabular-nums">{formatINR(each * 2)}</div>
-              </div>
+              {!solo && (
+                <div>
+                  <div className="text-[11px] uppercase text-white/80">
+                    {memberCount === 2 ? "Together" : `All ${memberCount} of you`}
+                  </div>
+                  <div className="text-xl font-extrabold tabular-nums">{formatINR(each * memberCount)}</div>
+                </div>
+              )}
             </div>
             <p className="mt-2 text-xs text-white/90">
-              ≈ {formatINR(Math.round(perWeek))} a week each over 2027
+              ≈ {formatINR(Math.round(perWeek))} a week{solo ? "" : " each"} over 2027
               {count !== WEEKS_IN_YEAR &&
                 ` · about ${boxesPerWeek % 1 === 0 ? boxesPerWeek : boxesPerWeek.toFixed(1)} boxes a week`}
             </p>

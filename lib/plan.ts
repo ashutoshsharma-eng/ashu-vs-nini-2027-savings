@@ -1,5 +1,3 @@
-import type { Player } from "./constants";
-
 /** The shared savings plan: box i (1-based) is worth start + (i - 1) × step. */
 export type Plan = {
   start: number;
@@ -7,7 +5,8 @@ export type Plan = {
   count: number;
   /** false until someone has set the plan up in the app */
   configured: boolean;
-  updatedBy: Player | null;
+  /** member id of whoever last saved the plan */
+  updatedBy: number | null;
 };
 
 export const DEFAULT_PLAN = { start: 100, step: 100, count: 52 } as const;

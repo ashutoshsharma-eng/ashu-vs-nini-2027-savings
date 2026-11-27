@@ -2,18 +2,18 @@
 
 import { formatINR } from "@/lib/constants";
 
-type Props = { amount: number; byName: string; onClose: () => void };
+type Props = { amount: number; byName: string; solo?: boolean; onClose: () => void };
 
 const FLOATERS = ["🎉", "🥳", "🍾", "🎊", "🥂", "👏", "💃", "🕺"];
 
-export default function CelebrationOverlay({ amount, byName, onClose }: Props) {
+export default function CelebrationOverlay({ amount, byName, solo = false, onClose }: Props) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-6 backdrop-blur-[2px]"
       onClick={onClose}
       role="alertdialog"
       aria-live="assertive"
-      aria-label={`Milestone: ${formatINR(amount)} saved together`}
+      aria-label={`Milestone: ${formatINR(amount)} saved${solo ? "" : " together"}`}
     >
       {FLOATERS.map((e, i) => (
         <span
@@ -32,8 +32,10 @@ export default function CelebrationOverlay({ amount, byName, onClose }: Props) {
             Cheers!
           </p>
           <p className="mt-1 text-4xl font-black tabular-nums">{formatINR(amount)}</p>
-          <p className="mt-1 text-base font-semibold">saved together 💑</p>
-          <p className="mt-3 text-xs text-zinc-500">{byName} just pushed you past the milestone</p>
+          <p className="mt-1 text-base font-semibold">{solo ? "saved so far 💪" : "saved together 🫶"}</p>
+          <p className="mt-3 text-xs text-zinc-500">
+            {solo ? "Another milestone in the bag — keep the streak alive" : `${byName} just pushed you past the milestone`}
+          </p>
           <button
             type="button"
             onClick={onClose}

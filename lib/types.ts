@@ -1,8 +1,17 @@
-import type { Player } from "./constants";
+export type Member = {
+  id: number;
+  name: string;
+  emoji: string;
+  /** a key of MEMBER_COLORS */
+  color: string;
+  isAdmin: boolean;
+  /** true while the member still uses a default PIN (1111/2222 from the original two-player setup) */
+  pinIsDefault: boolean;
+};
 
 export type BoxRow = {
   id: number;
-  player: Player;
+  memberId: number;
   amount: number;
   isChecked: boolean;
   /** ISO timestamp, or null when unticked */
@@ -20,7 +29,7 @@ export type MoneyDateRow = {
 
 export type BucketItem = {
   id: number;
-  player: Player;
+  memberId: number;
   title: string;
   estCost: number | null;
   isDone: boolean;
